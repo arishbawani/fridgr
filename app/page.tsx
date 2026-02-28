@@ -1,65 +1,223 @@
-import Image from "next/image";
+"use client";
+import { useState, KeyboardEvent } from "react";
+import RecipeCard from "@/components/RecipeCard";
+
+type Recipe = {
+  name: string;
+  description: string;
+  prepTime: string;
+  servings: number;
+  macros: { calories: number; protein: number; carbs: number; fat: number };
+  have: string[];
+  need: string[];
+  steps: string[];
+};
+
+const DIETARY_OPTIONS = ["Vegetarian", "Vegan", "Gluten-Free", "Dairy-Free", "Low-Carb"];
 
 export default function Home() {
+  const [input, setInput] = useState("");
+  const [ingredients, setIngredients] = useState<string[]>([]);
+  const [maxCalories, setMaxCalories] = useState("");
+  const [minProtein, setMinProtein] = useState("");
+  const [dietary, setDietary] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [error, setError] = useState("");
+
+  function addIngredient() {
+    const trimmed = input.trim();
+    if (trimmed && !ingredients.includes(trimmed.toLowerCase())) {
+      setIngredients([...ingredients, trimmed.toLowerCase()]);
+    }
+    setInput("");
+  }
+
+  function removeIngredient(item: string) {
+    setIngredients(ingredients.filter((i) => i !== item));
+  }
+
+  function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addIngredient();
+    }
+  }
+
+  function toggleDietary(option: string) {
+    setDietary((prev) =>
+      prev.includes(option) ? prev.filter((d) => d !== option) : [...prev, option]
+    );
+  }
+
+  async function findRecipes() {
+    if (ingredients.length === 0) {
+      setError("Add at least one ingredient first.");
+      return;
+    }
+    setError("");
+    setLoading(true);
+    setRecipes([]);
+
+    try {
+      const res = await fetch("/api/recipes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ingredients,
+          maxCalories: maxCalories ? Number(maxCalories) : null,
+          minProtein: minProtein ? Number(minProtein) : null,
+          dietary,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Something went wrong");
+      setRecipes(data.recipes);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong. Try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className="min-h-screen bg-slate-50">
+      <div className="max-w-lg mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">fridgr</h1>
+          <p className="text-slate-500 mt-1">Turn what you have into what to eat.</p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+
+        {/* Ingredient Input */}
+        <section className="bg-white rounded-2xl border border-slate-200 p-5 mb-4 shadow-sm">
+          <h2 className="font-semibold text-slate-900 mb-3">What&apos;s in your fridge?</h2>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="chicken, rice, broccoli..."
+              className="flex-1 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+            <button
+              onClick={addIngredient}
+              className="bg-green-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-green-700 transition-colors"
+            >
+              Add
+            </button>
+          </div>
+
+          {ingredients.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-3">
+              {ingredients.map((item) => (
+                <span
+                  key={item}
+                  className="flex items-center gap-1.5 bg-slate-100 text-slate-700 text-sm px-3 py-1.5 rounded-full"
+                >
+                  {item}
+                  <button
+                    onClick={() => removeIngredient(item)}
+                    className="text-slate-400 hover:text-slate-700 leading-none"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* Macro Goals */}
+        <section className="bg-white rounded-2xl border border-slate-200 p-5 mb-4 shadow-sm">
+          <h2 className="font-semibold text-slate-900 mb-3">Your goals</h2>
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div>
+              <label className="text-xs font-medium text-slate-500 block mb-1">Max calories</label>
+              <input
+                type="number"
+                value={maxCalories}
+                onChange={(e) => setMaxCalories(e.target.value)}
+                placeholder="e.g. 600"
+                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-500 block mb-1">Min protein (g)</label>
+              <input
+                type="number"
+                value={minProtein}
+                onChange={(e) => setMinProtein(e.target.value)}
+                placeholder="e.g. 40"
+                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {DIETARY_OPTIONS.map((option) => (
+              <button
+                key={option}
+                onClick={() => toggleDietary(option)}
+                className={`text-xs px-3 py-1.5 rounded-full border font-medium transition-colors ${
+                  dietary.includes(option)
+                    ? "bg-green-600 text-white border-green-600"
+                    : "border-slate-200 text-slate-600 hover:border-green-400"
+                }`}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {/* Error */}
+        {error && (
+          <p className="text-red-600 text-sm mb-4 px-1">{error}</p>
+        )}
+
+        {/* Find Recipes Button */}
+        <button
+          onClick={findRecipes}
+          disabled={loading}
+          className="w-full bg-green-600 text-white py-3.5 rounded-2xl font-semibold text-base hover:bg-green-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed shadow-sm mb-6"
+        >
+          {loading ? "Finding recipes..." : "Find Recipes"}
+        </button>
+
+        {/* Loading skeleton */}
+        {loading && (
+          <div className="space-y-4">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="bg-white rounded-2xl border border-slate-200 p-5 animate-pulse">
+                <div className="h-5 bg-slate-200 rounded-full w-2/3 mb-2" />
+                <div className="h-3 bg-slate-100 rounded-full w-1/2 mb-4" />
+                <div className="grid grid-cols-4 gap-2">
+                  {[1, 2, 3, 4].map((j) => (
+                    <div key={j} className="h-12 bg-slate-100 rounded-xl" />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Results */}
+        {!loading && recipes.length > 0 && (
+          <div>
+            <h2 className="font-semibold text-slate-900 mb-3">
+              {recipes.length} recipes found
+            </h2>
+            <div className="space-y-4">
+              {recipes.map((recipe, i) => (
+                <RecipeCard key={i} recipe={recipe} />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </main>
   );
 }
