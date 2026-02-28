@@ -3,8 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
   // Validate access code
-  const code = req.headers.get("x-access-code");
-  if (!code || code !== process.env.APP_SECRET) {
+  const code = req.headers.get("x-access-code")?.trim();
+  if (!code || code !== process.env.APP_SECRET?.trim()) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
