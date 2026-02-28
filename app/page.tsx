@@ -1,5 +1,5 @@
 "use client";
-import { useState, KeyboardEvent } from "react";
+import { useState, KeyboardEvent, useEffect } from "react";
 import RecipeCard from "@/components/RecipeCard";
 
 type Recipe = {
@@ -14,8 +14,12 @@ type Recipe = {
 };
 
 const DIETARY_OPTIONS = ["Vegetarian", "Vegan", "Gluten-Free", "Dairy-Free", "Low-Carb"];
+const STORAGE_KEY = "fridgr_access_code";
 
 export default function Home() {
+  const [accessCode, setAccessCode] = useState("");
+  const [savedCode, setSavedCode] = useState<string | null>(null);
+  const [codeError, setCodeError] = useState("");
   const [input, setInput] = useState("");
   const [ingredients, setIngredients] = useState<string[]>([]);
   const [maxCalories, setMaxCalories] = useState("");
@@ -24,6 +28,31 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) setSavedCode(stored);
+  }, []);
+
+  async function submitCode() {
+    if (!accessCode.trim()) return;
+    const res = await fetch("/api/recipes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-access-code": accessCode.trim() },
+      body: JSON.stringify({ ingredients: ["test"], checkAuth: true }),
+    });
+    if (res.status === 403) {
+      setCodeError("Wrong code. Try again.");
+      return;
+    }
+    localStorage.setItem(STORAGE_KEY, accessCode.trim());
+    setSavedCode(accessCode.trim());
+    setCodeError("");
+  }
+
+  function handleCodeKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") submitCode();
+  }
 
   function addIngredient() {
     const trimmed = input.trim();
@@ -62,7 +91,10 @@ export default function Home() {
     try {
       const res = await fetch("/api/recipes", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-access-code": savedCode ?? "",
+        },
         body: JSON.stringify({
           ingredients,
           maxCalories: maxCalories ? Number(maxCalories) : null,
@@ -70,6 +102,12 @@ export default function Home() {
           dietary,
         }),
       });
+
+      if (res.status === 403) {
+        localStorage.removeItem(STORAGE_KEY);
+        setSavedCode(null);
+        return;
+      }
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Something went wrong");
@@ -79,6 +117,38 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
+  }
+
+  // Passcode gate
+  if (!savedCode) {
+    return (
+      <main className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
+        <div className="w-full max-w-sm">
+          <div className="mb-8 text-center">
+            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">fridgr</h1>
+            <p className="text-slate-500 mt-1">Enter your access code to continue.</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+            <input
+              type="text"
+              value={accessCode}
+              onChange={(e) => setAccessCode(e.target.value)}
+              onKeyDown={handleCodeKeyDown}
+              placeholder="Access code"
+              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent mb-3"
+              autoFocus
+            />
+            {codeError && <p className="text-red-500 text-sm mb-3">{codeError}</p>}
+            <button
+              onClick={submitCode}
+              className="w-full bg-green-600 text-white py-3 rounded-xl font-semibold text-sm hover:bg-green-700 transition-colors"
+            >
+              Continue
+            </button>
+          </div>
+        </div>
+      </main>
+    );
   }
 
   return (
@@ -173,12 +243,8 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Error */}
-        {error && (
-          <p className="text-red-600 text-sm mb-4 px-1">{error}</p>
-        )}
+        {error && <p className="text-red-600 text-sm mb-4 px-1">{error}</p>}
 
-        {/* Find Recipes Button */}
         <button
           onClick={findRecipes}
           disabled={loading}
@@ -187,7 +253,6 @@ export default function Home() {
           {loading ? "Finding recipes..." : "Find Recipes"}
         </button>
 
-        {/* Loading skeleton */}
         {loading && (
           <div className="space-y-4">
             {[1, 2, 3].map((i) => (
@@ -204,12 +269,9 @@ export default function Home() {
           </div>
         )}
 
-        {/* Results */}
         {!loading && recipes.length > 0 && (
           <div>
-            <h2 className="font-semibold text-slate-900 mb-3">
-              {recipes.length} recipes found
-            </h2>
+            <h2 className="font-semibold text-slate-900 mb-3">{recipes.length} recipes found</h2>
             <div className="space-y-4">
               {recipes.map((recipe, i) => (
                 <RecipeCard key={i} recipe={recipe} />

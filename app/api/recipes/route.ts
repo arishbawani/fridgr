@@ -1,36 +1,18 @@
 import Groq from "groq-sdk";
 import { NextRequest, NextResponse } from "next/server";
 
-// Simple in-memory rate limiter: 10 requests per IP per hour
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-const LIMIT = 10;
-const WINDOW_MS = 60 * 60 * 1000; // 1 hour
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(ip);
-
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(ip, { count: 1, resetAt: now + WINDOW_MS });
-    return true;
-  }
-
-  if (entry.count >= LIMIT) return false;
-
-  entry.count++;
-  return true;
-}
-
 export async function POST(req: NextRequest) {
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  if (!checkRateLimit(ip)) {
-    return NextResponse.json(
-      { error: "You've hit the limit of 10 requests per hour. Try again later." },
-      { status: 429 }
-    );
+  // Validate access code
+  const code = req.headers.get("x-access-code");
+  if (!code || code !== process.env.APP_SECRET) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
   }
 
-  const { ingredients, maxCalories, minProtein, dietary } = await req.json();
+  const body = await req.json();
+  const { ingredients, checkAuth, maxCalories, minProtein, dietary } = body;
+
+  // Auth check only — used by the passcode gate on first visit
+  if (checkAuth) return NextResponse.json({ ok: true });
 
   if (!ingredients || ingredients.length === 0) {
     return NextResponse.json({ error: "No ingredients provided" }, { status: 400 });
@@ -46,7 +28,6 @@ export async function POST(req: NextRequest) {
   const dietaryText = dietary && dietary.length > 0
     ? `Dietary restrictions: ${dietary.join(", ")}.`
     : "";
-
   const calorieText = maxCalories ? `Max calories per serving: ${maxCalories}.` : "";
   const proteinText = minProtein ? `Min protein per serving: ${minProtein}g.` : "";
 
