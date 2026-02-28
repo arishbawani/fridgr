@@ -1,36 +1,39 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# fridgr
 
-## Getting Started
+Turn what you have into what to eat.
 
-First, run the development server:
+You type in whatever's sitting in your fridge, set a calorie or protein target if you care about that, and it gives you 3 recipes you can actually make — along with what you're missing if anything.
+
+Live at: **https://fridge-app-eosin.vercel.app** (access code required)
+
+---
+
+## What it does
+
+- Add ingredients one at a time (chicken, rice, garlic, whatever)
+- Optional: set a max calorie limit or minimum protein goal
+- Optional: filter by dietary preference (vegetarian, vegan, gluten-free, etc.)
+- Hit "Find Recipes" — get 3 real recipes with macros, steps, and a breakdown of what you already have vs. what you'd need to buy
+
+## Stack
+
+- Next.js (App Router) + TypeScript
+- Tailwind CSS
+- Groq API — llama-3.3-70b-versatile for recipe generation
+- Deployed on Vercel
+
+## Running locally
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+You'll need a `.env.local` file with:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```
+GROQ_API_KEY=your_key_here
+APP_SECRET=your_access_code_here
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Get a free Groq API key at [console.groq.com](https://console.groq.com). No billing required.
