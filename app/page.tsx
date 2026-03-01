@@ -207,9 +207,10 @@ export default function Home() {
             <div>
               <label className="text-xs font-medium text-slate-500 block mb-1">Max calories</label>
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 value={maxCalories}
-                onChange={(e) => setMaxCalories(e.target.value)}
+                onChange={(e) => setMaxCalories(e.target.value.replace(/\D/g, ""))}
                 placeholder="e.g. 600"
                 className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
               />
@@ -217,9 +218,10 @@ export default function Home() {
             <div>
               <label className="text-xs font-medium text-slate-500 block mb-1">Min protein (g)</label>
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 value={minProtein}
-                onChange={(e) => setMinProtein(e.target.value)}
+                onChange={(e) => setMinProtein(e.target.value.replace(/\D/g, ""))}
                 placeholder="e.g. 40"
                 className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
               />
