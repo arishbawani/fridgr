@@ -59,7 +59,20 @@ export default function Home() {
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) setSavedCode(stored);
+    if (stored) {
+      // Validate stored code is still correct before accepting it
+      fetch("/api/recipes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-access-code": stored },
+        body: JSON.stringify({ ingredients: ["test"], checkAuth: true }),
+      }).then((res) => {
+        if (res.status === 403) {
+          localStorage.removeItem(STORAGE_KEY);
+        } else {
+          setSavedCode(stored);
+        }
+      });
+    }
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
