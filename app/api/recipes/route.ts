@@ -55,19 +55,24 @@ Return ONLY a valid JSON array with this exact structure, no markdown, no extra 
   }
 ]`;
 
-  const completion = await client.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
-    messages: [{ role: "user", content: prompt }],
-    temperature: 0.7,
-  });
+  try {
+    const completion = await client.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.7,
+    });
 
-  const text = completion.choices[0]?.message?.content?.trim() ?? "";
+    const text = completion.choices[0]?.message?.content?.trim() ?? "";
 
-  const jsonMatch = text.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) {
-    return NextResponse.json({ error: "Failed to parse AI response" }, { status: 500 });
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      return NextResponse.json({ error: "Failed to parse AI response" }, { status: 500 });
+    }
+
+    const recipes = JSON.parse(jsonMatch[0]);
+    return NextResponse.json({ recipes });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  const recipes = JSON.parse(jsonMatch[0]);
-  return NextResponse.json({ recipes });
 }
