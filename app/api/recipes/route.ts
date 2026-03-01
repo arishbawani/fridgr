@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { ingredients, checkAuth, maxCalories, minProtein, dietary } = body;
+  const { ingredients, checkAuth, maxCalories, minProtein, dietary, cuisine } = body;
 
   // Auth check only — used by the passcode gate on first visit
   if (checkAuth) return NextResponse.json({ ok: true });
@@ -28,11 +28,14 @@ export async function POST(req: NextRequest) {
   const dietaryText = dietary && dietary.length > 0
     ? `Dietary restrictions: ${dietary.join(", ")}.`
     : "";
+  const cuisineText = cuisine && cuisine.length > 0
+    ? `Cuisine style: ${cuisine.join(", ")}.`
+    : "";
   const calorieText = maxCalories ? `Max calories per serving: ${maxCalories}.` : "";
   const proteinText = minProtein ? `Min protein per serving: ${minProtein}g.` : "";
 
   const prompt = `You are a recipe assistant. The user has these ingredients: ${ingredients.join(", ")}.
-${calorieText} ${proteinText} ${dietaryText}
+${calorieText} ${proteinText} ${dietaryText} ${cuisineText}
 
 Suggest exactly 3 recipes they can make. Prioritize using the ingredients they already have.
 
@@ -47,7 +50,8 @@ Return ONLY a valid JSON array with this exact structure, no markdown, no extra 
       "calories": 450,
       "protein": 35,
       "carbs": 40,
-      "fat": 12
+      "fat": 12,
+      "fiber": 8
     },
     "have": ["ingredient1", "ingredient2"],
     "need": ["ingredient3"],

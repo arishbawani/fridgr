@@ -7,13 +7,14 @@ type Recipe = {
   description: string;
   prepTime: string;
   servings: number;
-  macros: { calories: number; protein: number; carbs: number; fat: number };
+  macros: { calories: number; protein: number; carbs: number; fat: number; fiber: number };
   have: string[];
   need: string[];
   steps: string[];
 };
 
-const DIETARY_OPTIONS = ["Vegetarian", "Vegan", "Gluten-Free", "Dairy-Free", "Low-Carb"];
+const DIETARY_OPTIONS = ["Vegetarian", "Vegan", "Gluten-Free", "Dairy-Free", "Low-Carb", "Halal", "Kosher"];
+const CUISINE_OPTIONS = ["Mexican", "Chinese", "Indian"];
 const STORAGE_KEY = "fridgr_access_code";
 
 export default function Home() {
@@ -25,6 +26,7 @@ export default function Home() {
   const [maxCalories, setMaxCalories] = useState("");
   const [minProtein, setMinProtein] = useState("");
   const [dietary, setDietary] = useState<string[]>([]);
+  const [cuisine, setCuisine] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [error, setError] = useState("");
@@ -79,6 +81,12 @@ export default function Home() {
     );
   }
 
+  function toggleCuisine(option: string) {
+    setCuisine((prev) =>
+      prev.includes(option) ? prev.filter((c) => c !== option) : [...prev, option]
+    );
+  }
+
   async function findRecipes() {
     if (ingredients.length === 0) {
       setError("Add at least one ingredient first.");
@@ -100,6 +108,7 @@ export default function Home() {
           maxCalories: maxCalories ? Number(maxCalories) : null,
           minProtein: minProtein ? Number(minProtein) : null,
           dietary,
+          cuisine,
         }),
       });
 
@@ -228,13 +237,29 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 mb-3">
             {DIETARY_OPTIONS.map((option) => (
               <button
                 key={option}
                 onClick={() => toggleDietary(option)}
                 className={`text-xs px-3 py-1.5 rounded-full border font-medium transition-colors ${
                   dietary.includes(option)
+                    ? "bg-green-600 text-white border-green-600"
+                    : "border-slate-200 text-slate-600 hover:border-green-400"
+                }`}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+          <label className="text-xs font-medium text-slate-500 block mb-1">Cuisine</label>
+          <div className="flex flex-wrap gap-2">
+            {CUISINE_OPTIONS.map((option) => (
+              <button
+                key={option}
+                onClick={() => toggleCuisine(option)}
+                className={`text-xs px-3 py-1.5 rounded-full border font-medium transition-colors ${
+                  cuisine.includes(option)
                     ? "bg-green-600 text-white border-green-600"
                     : "border-slate-200 text-slate-600 hover:border-green-400"
                 }`}

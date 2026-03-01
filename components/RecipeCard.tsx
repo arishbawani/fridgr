@@ -6,7 +6,7 @@ type Recipe = {
   description: string;
   prepTime: string;
   servings: number;
-  macros: { calories: number; protein: number; carbs: number; fat: number };
+  macros: { calories: number; protein: number; carbs: number; fat: number; fiber: number };
   have: string[];
   need: string[];
   steps: string[];
@@ -30,11 +30,12 @@ export default function RecipeCard({ recipe }: { recipe: Recipe }) {
         </div>
 
         {/* Macros */}
-        <div className="grid grid-cols-4 gap-2 mt-4">
+        <div className="grid grid-cols-5 gap-2 mt-4">
           <MacroChip label="cal" value={recipe.macros.calories} color="bg-orange-50 text-orange-700" />
           <MacroChip label="protein" value={`${recipe.macros.protein}g`} color="bg-green-50 text-green-700" />
           <MacroChip label="carbs" value={`${recipe.macros.carbs}g`} color="bg-blue-50 text-blue-700" />
           <MacroChip label="fat" value={`${recipe.macros.fat}g`} color="bg-purple-50 text-purple-700" />
+          <MacroChip label="fiber" value={`${recipe.macros.fiber}g`} color="bg-yellow-50 text-yellow-700" />
         </div>
 
         {/* Ingredients */}
