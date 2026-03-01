@@ -12,6 +12,8 @@ type Comment = {
   created_at: string;
   author_name: string | null;
   author_avatar_url: string | null;
+  like_count: number;
+  user_liked: boolean;
 };
 
 type Props = {
@@ -56,13 +58,32 @@ export default function RecipeDetailModal({
   useEffect(() => {
     async function load() {
       setCommentsLoading(true);
-      const { data } = await supabase
+      const { data: rawComments } = await supabase
         .from("recipe_comments")
         .select("*")
         .eq("recipe_id", recipe.id)
         .order("created_at", { ascending: true });
-      setComments(data ?? []);
-      setCommentsLoading(false);
+      const raw = rawComments ?? [];
+      if (raw.length === 0) {
+        setComments([]);
+        setCommentsLoading(false);
+      } else {
+        const ids = raw.map((c) => c.id);
+        const [likeCountsRes, userLikesRes] = await Promise.all([
+          supabase.from("comment_likes").select("comment_id").in("comment_id", ids),
+          user ? supabase.from("comment_likes").select("comment_id").eq("user_id", user.id).in("comment_id", ids) : Promise.resolve({ data: [] }),
+        ]);
+        const likeCounts = (likeCountsRes.data ?? []).reduce((acc: Record<string, number>, l: { comment_id: string }) => {
+          acc[l.comment_id] = (acc[l.comment_id] || 0) + 1; return acc;
+        }, {});
+        const userLikedSet = new Set((userLikesRes.data ?? []).map((l: { comment_id: string }) => l.comment_id));
+        setComments(raw.map((c) => ({
+          ...c,
+          like_count: likeCounts[c.id] || 0,
+          user_liked: userLikedSet.has(c.id),
+        })));
+        setCommentsLoading(false);
+      }
 
       if (canFollow) {
         const { data: followData } = await supabase
@@ -130,6 +151,21 @@ export default function RecipeDetailModal({
       setFollowing(true);
     }
     setFollowLoading(false);
+  }
+
+  async function handleCommentLike(commentId: string) {
+    if (!user) { onRequireAuth(); return; }
+    const comment = comments.find((c) => c.id === commentId);
+    if (!comment) return;
+    const next = !comment.user_liked;
+    setComments((prev) => prev.map((c) =>
+      c.id === commentId ? { ...c, user_liked: next, like_count: c.like_count + (next ? 1 : -1) } : c
+    ));
+    if (next) {
+      await supabase.from("comment_likes").insert({ user_id: user.id, comment_id: commentId });
+    } else {
+      await supabase.from("comment_likes").delete().eq("user_id", user.id).eq("comment_id", commentId);
+    }
   }
 
   return (
@@ -250,9 +286,18 @@ export default function RecipeDetailModal({
                 {comments.map((c) => (
                   <div key={c.id} className="flex gap-2.5">
                     <AvatarCircle name={c.author_name} url={c.author_avatar_url} size={7} />
-                    <div>
+                    <div className="flex-1">
                       <p className="text-xs text-slate-400 mb-0.5">{c.author_name ?? "Anonymous"}</p>
                       <p className="text-sm text-slate-700">{c.content}</p>
+                      <button
+                        onClick={() => handleCommentLike(c.id)}
+                        className={`flex items-center gap-1 mt-1 text-xs transition-colors ${
+                          c.user_liked ? "text-red-500" : "text-slate-300 hover:text-red-400"
+                        }`}
+                      >
+                        <span>{c.user_liked ? "♥" : "♡"}</span>
+                        {c.like_count > 0 && <span>{c.like_count}</span>}
+                      </button>
                     </div>
                   </div>
                 ))}

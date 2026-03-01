@@ -40,6 +40,14 @@ function today() {
   return new Date().toISOString().split("T")[0];
 }
 
+function getPast7Dates(): string[] {
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - (6 - i));
+    return d.toISOString().split("T")[0];
+  });
+}
+
 function loadLogLocal(): MacroEntry[] {
   try {
     const raw = localStorage.getItem(LOG_KEY);
@@ -91,6 +99,7 @@ export default function DayTracker({ user }: { user: User | null }) {
   const [goalDraft, setGoalDraft] = useState<DailyGoals>(DEFAULT_GOALS);
   const [manualEntry, setManualEntry] = useState<Partial<MacroEntry>>({ name: "" });
   const [showManual, setShowManual] = useState(false);
+  const [weekCalories, setWeekCalories] = useState<Array<{ date: string; calories: number }>>([]);
 
   useEffect(() => {
     async function loadData() {
@@ -104,6 +113,19 @@ export default function DayTracker({ user }: { user: User | null }) {
         const g = goalsRes.data ? { ...DEFAULT_GOALS, ...goalsRes.data.goals } : loadGoalsLocal();
         setGoals(g);
         setGoalDraft(g);
+
+        // Weekly calories chart
+        const past7 = getPast7Dates();
+        const { data: weekData } = await supabase
+          .from("daily_logs")
+          .select("date, entries")
+          .eq("user_id", user.id)
+          .in("date", past7);
+        const calsByDate: Record<string, number> = {};
+        (weekData ?? []).forEach((row: { date: string; entries: MacroEntry[] }) => {
+          calsByDate[row.date] = (row.entries ?? []).reduce((s, e) => s + (e.calories || 0), 0);
+        });
+        setWeekCalories(past7.map((d) => ({ date: d, calories: calsByDate[d] ?? 0 })));
       } else {
         setEntries(loadLogLocal());
         const g = loadGoalsLocal();
@@ -240,6 +262,69 @@ export default function DayTracker({ user }: { user: User | null }) {
                 </div>
               );
             })}
+
+            {/* Macro calorie breakdown */}
+            {totals.calories > 0 && (() => {
+              const pc = totals.protein * 4;
+              const cc = totals.carbs * 4;
+              const fc = totals.fat * 9;
+              const total = pc + cc + fc || 1;
+              return (
+                <div className="pt-3 border-t border-slate-100">
+                  <p className="text-xs font-medium text-slate-500 mb-2">Calorie breakdown</p>
+                  <div className="flex h-2.5 rounded-full overflow-hidden gap-px">
+                    <div className="bg-green-400 rounded-l-full" style={{ width: `${(pc / total) * 100}%` }} />
+                    <div className="bg-blue-400" style={{ width: `${(cc / total) * 100}%` }} />
+                    <div className="bg-purple-400 rounded-r-full" style={{ width: `${(fc / total) * 100}%` }} />
+                  </div>
+                  <div className="flex gap-3 mt-1.5">
+                    <span className="text-[10px] text-slate-500 flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-green-400 shrink-0" />Protein {Math.round((pc / total) * 100)}%
+                    </span>
+                    <span className="text-[10px] text-slate-500 flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />Carbs {Math.round((cc / total) * 100)}%
+                    </span>
+                    <span className="text-[10px] text-slate-500 flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-purple-400 shrink-0" />Fat {Math.round((fc / total) * 100)}%
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Weekly calories chart */}
+            {weekCalories.length > 0 && (
+              <div className="pt-3 border-t border-slate-100">
+                <p className="text-xs font-medium text-slate-500 mb-2">This week</p>
+                <div className="flex items-end gap-1.5" style={{ height: "48px" }}>
+                  {weekCalories.map(({ date, calories }) => {
+                    const maxCal = Math.max(...weekCalories.map((w) => w.calories), 1);
+                    const heightPx = Math.max((calories / maxCal) * 48, 2);
+                    const isToday = date === today();
+                    return (
+                      <div key={date} className="flex-1 flex flex-col justify-end h-full">
+                        <div
+                          className={`w-full rounded-sm ${isToday ? "bg-green-500" : "bg-slate-200"}`}
+                          style={{ height: `${heightPx}px` }}
+                          title={`${calories} cal`}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex gap-1.5 mt-1">
+                  {weekCalories.map(({ date }) => {
+                    const isToday = date === today();
+                    const dayLabel = ["Su", "M", "T", "W", "Th", "F", "S"][new Date(date + "T12:00:00Z").getUTCDay()];
+                    return (
+                      <span key={date} className={`flex-1 text-center text-[10px] ${isToday ? "text-green-600 font-semibold" : "text-slate-400"}`}>
+                        {dayLabel}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </section>

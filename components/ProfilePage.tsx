@@ -12,6 +12,12 @@ type Profile = {
   avatar_url: string | null;
 };
 
+type Collection = {
+  id: string;
+  name: string;
+  count: number;
+};
+
 type Props = {
   user: User | null;
   onRequireAuth: () => void;
@@ -63,17 +69,43 @@ export default function ProfilePage({ user, onRequireAuth, onSignOut, onAvatarCh
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
 
-  const [profileTab, setProfileTab] = useState<"posts" | "saved">("posts");
+  const [profileTab, setProfileTab] = useState<"posts" | "saved" | "collections">("posts");
   const [posts, setPosts] = useState<CommunityRecipe[]>([]);
   const [saved, setSavedRecipes] = useState<CommunityRecipe[]>([]);
   const [recipesLoading, setRecipesLoading] = useState(true);
   const [detail, setDetail] = useState<CommunityRecipe | null>(null);
 
+  // Collections state
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [collectionsLoading, setCollectionsLoading] = useState(false);
+  const [selectedCollection, setSelectedCollection] = useState<Collection | null>(null);
+  const [collectionRecipes, setCollectionRecipes] = useState<CommunityRecipe[]>([]);
+  const [collectionRecipesLoading, setCollectionRecipesLoading] = useState(false);
+  const [newCollectionName, setNewCollectionName] = useState("");
+  const [showNewCollection, setShowNewCollection] = useState(false);
+  const [savingCollection, setSavingCollection] = useState(false);
+  const [addingToCollection, setAddingToCollection] = useState<string | null>(null);
+  const [collectionMemberships, setCollectionMemberships] = useState<Set<string>>(new Set());
+
   useEffect(() => {
     if (!user) return;
     loadProfile();
     loadRecipes();
+    loadCollections();
   }, [user]);
+
+  // Load memberships when opening collection picker for a recipe
+  useEffect(() => {
+    if (!addingToCollection || !user) return;
+    supabase
+      .from("collection_recipes")
+      .select("collection_id")
+      .eq("recipe_id", addingToCollection)
+      .eq("user_id", user.id)
+      .then(({ data }) => {
+        setCollectionMemberships(new Set((data ?? []).map((r: { collection_id: string }) => r.collection_id)));
+      });
+  }, [addingToCollection]);
 
   async function loadProfile() {
     if (!user) return;
@@ -112,10 +144,96 @@ export default function ProfilePage({ user, onRequireAuth, onSignOut, onAvatarCh
     setRecipesLoading(false);
   }
 
+  async function loadCollections() {
+    if (!user) return;
+    setCollectionsLoading(true);
+    const { data: cols } = await supabase
+      .from("recipe_collections")
+      .select("id, name")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: true });
+
+    if (!cols || cols.length === 0) { setCollections([]); setCollectionsLoading(false); return; }
+
+    const ids = cols.map((c) => c.id);
+    const { data: countData } = await supabase
+      .from("collection_recipes")
+      .select("collection_id")
+      .in("collection_id", ids);
+
+    const counts = (countData ?? []).reduce((acc: Record<string, number>, r: { collection_id: string }) => {
+      acc[r.collection_id] = (acc[r.collection_id] || 0) + 1; return acc;
+    }, {});
+
+    setCollections(cols.map((c) => ({ id: c.id, name: c.name, count: counts[c.id] || 0 })));
+    setCollectionsLoading(false);
+  }
+
+  async function createCollection() {
+    if (!user || !newCollectionName.trim()) return;
+    setSavingCollection(true);
+    const { data } = await supabase
+      .from("recipe_collections")
+      .insert({ user_id: user.id, name: newCollectionName.trim() })
+      .select("id, name")
+      .single();
+    if (data) setCollections((prev) => [...prev, { id: data.id, name: data.name, count: 0 }]);
+    setNewCollectionName("");
+    setShowNewCollection(false);
+    setSavingCollection(false);
+  }
+
+  async function deleteCollection(id: string) {
+    if (!window.confirm("Delete this collection?")) return;
+    await supabase.from("recipe_collections").delete().eq("id", id).eq("user_id", user!.id);
+    setCollections((prev) => prev.filter((c) => c.id !== id));
+    if (selectedCollection?.id === id) setSelectedCollection(null);
+  }
+
+  async function openCollection(col: Collection) {
+    setSelectedCollection(col);
+    setCollectionRecipesLoading(true);
+    const { data } = await supabase
+      .from("collection_recipes")
+      .select("community_recipes(*)")
+      .eq("collection_id", col.id)
+      .eq("user_id", user!.id);
+    const rawRecipes = (data ?? []).map((r: { community_recipes: unknown }) => r.community_recipes).filter(Boolean) as CommunityRecipe[];
+    const enriched = await enrichRecipes(supabase, rawRecipes, user?.id);
+    setCollectionRecipes(enriched);
+    setCollectionRecipesLoading(false);
+  }
+
+  async function removeFromCollection(recipeId: string) {
+    if (!selectedCollection || !user) return;
+    await supabase.from("collection_recipes").delete()
+      .eq("collection_id", selectedCollection.id)
+      .eq("recipe_id", recipeId)
+      .eq("user_id", user.id);
+    setCollectionRecipes((prev) => prev.filter((r) => r.id !== recipeId));
+    setCollections((prev) => prev.map((c) => c.id === selectedCollection.id ? { ...c, count: Math.max(0, c.count - 1) } : c));
+    setSelectedCollection((prev) => prev ? { ...prev, count: Math.max(0, prev.count - 1) } : prev);
+  }
+
+  async function toggleRecipeInCollection(collectionId: string) {
+    if (!addingToCollection || !user) return;
+    if (collectionMemberships.has(collectionId)) {
+      await supabase.from("collection_recipes").delete()
+        .eq("collection_id", collectionId)
+        .eq("recipe_id", addingToCollection)
+        .eq("user_id", user.id);
+      setCollectionMemberships((prev) => { const next = new Set(prev); next.delete(collectionId); return next; });
+      setCollections((prev) => prev.map((c) => c.id === collectionId ? { ...c, count: Math.max(0, c.count - 1) } : c));
+    } else {
+      await supabase.from("collection_recipes").insert({ collection_id: collectionId, recipe_id: addingToCollection, user_id: user.id });
+      setCollectionMemberships((prev) => new Set([...prev, collectionId]));
+      setCollections((prev) => prev.map((c) => c.id === collectionId ? { ...c, count: c.count + 1 } : c));
+    }
+  }
+
   function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    // Reset input so the same file can be selected again after cancel
     e.target.value = "";
     const reader = new FileReader();
     reader.onload = () => setCropImageSrc(reader.result as string);
@@ -292,24 +410,21 @@ export default function ProfilePage({ user, onRequireAuth, onSignOut, onAvatarCh
         <p className="text-xs text-slate-400 mt-2 text-center">Tap your photo to change it</p>
       </section>
 
-      {/* Posts / Saved tabs */}
+      {/* Posts / Saved / Collections tabs */}
       <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
-        <button
-          onClick={() => setProfileTab("posts")}
-          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${profileTab === "posts" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
-        >
-          Posts
-        </button>
-        <button
-          onClick={() => setProfileTab("saved")}
-          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${profileTab === "saved" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
-        >
-          Saved
-        </button>
+        {(["posts", "saved", "collections"] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setProfileTab(tab)}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${profileTab === tab ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+          >
+            {tab === "posts" ? "Posts" : tab === "saved" ? "Saved" : "Collections"}
+          </button>
+        ))}
       </div>
 
       {/* Recipe cards */}
-      {recipesLoading ? (
+      {recipesLoading && profileTab !== "collections" ? (
         <div className="space-y-4">
           {[1, 2].map((i) => (
             <div key={i} className="bg-white rounded-2xl border border-slate-200 p-5 animate-pulse">
@@ -349,17 +464,105 @@ export default function ProfilePage({ user, onRequireAuth, onSignOut, onAvatarCh
             ) : (
               <div className="space-y-4">
                 {saved.map((r) => (
-                  <CommunityRecipeCard
-                    key={r.id}
-                    recipe={r}
-                    onLike={handleLike}
-                    onSave={handleSave}
-                    onOpen={setDetail}
-                    requireAuth={() => true}
-                  />
+                  <div key={r.id} className="relative">
+                    <CommunityRecipeCard
+                      recipe={r}
+                      onLike={handleLike}
+                      onSave={handleSave}
+                      onOpen={setDetail}
+                      requireAuth={() => true}
+                    />
+                    <button
+                      onClick={() => setAddingToCollection(r.id)}
+                      className="absolute top-3 right-3 w-7 h-7 bg-white/90 border border-slate-200 rounded-full text-sm flex items-center justify-center hover:bg-slate-50 shadow-sm transition-colors"
+                      title="Add to collection"
+                    >
+                      📁
+                    </button>
+                  </div>
                 ))}
               </div>
             )
+          )}
+
+          {profileTab === "collections" && (
+            <div className="space-y-3">
+              {/* New collection form */}
+              {showNewCollection ? (
+                <div className="bg-white rounded-2xl border border-slate-200 p-4 flex gap-2 shadow-sm">
+                  <input
+                    autoFocus
+                    placeholder="Collection name"
+                    value={newCollectionName}
+                    onChange={(e) => setNewCollectionName(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && createCollection()}
+                    className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                  <button
+                    onClick={createCollection}
+                    disabled={savingCollection || !newCollectionName.trim()}
+                    className="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-60"
+                  >
+                    {savingCollection ? "..." : "Create"}
+                  </button>
+                  <button
+                    onClick={() => { setShowNewCollection(false); setNewCollectionName(""); }}
+                    className="text-slate-400 hover:text-slate-600 px-2 transition-colors text-lg"
+                  >
+                    ×
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowNewCollection(true)}
+                  className="w-full bg-white border border-dashed border-slate-300 rounded-2xl p-4 text-sm text-slate-500 hover:border-green-400 hover:text-green-600 transition-colors shadow-sm"
+                >
+                  + New Collection
+                </button>
+              )}
+
+              {collectionsLoading ? (
+                <div className="space-y-3">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="bg-white rounded-2xl border border-slate-200 p-4 animate-pulse">
+                      <div className="h-4 bg-slate-200 rounded w-1/2 mb-1" />
+                      <div className="h-3 bg-slate-100 rounded w-1/4" />
+                    </div>
+                  ))}
+                </div>
+              ) : collections.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
+                  <p className="text-slate-400 text-sm">No collections yet. Create one to organize your saved recipes.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {collections.map((col) => (
+                    <div
+                      key={col.id}
+                      className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden"
+                    >
+                      <button
+                        onClick={() => openCollection(col)}
+                        className="w-full flex items-center gap-3 p-4 text-left hover:bg-slate-50 transition-colors"
+                      >
+                        <span className="text-2xl">📁</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-slate-900 truncate">{col.name}</p>
+                          <p className="text-xs text-slate-400 mt-0.5">{col.count} {col.count === 1 ? "recipe" : "recipes"}</p>
+                        </div>
+                        <span className="text-slate-400 text-sm">→</span>
+                      </button>
+                      <button
+                        onClick={() => deleteCollection(col.id)}
+                        className="w-full border-t border-slate-100 py-2 text-xs text-slate-400 hover:text-red-400 transition-colors"
+                      >
+                        Delete collection
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </>
       )}
@@ -374,6 +577,96 @@ export default function ProfilePage({ user, onRequireAuth, onSignOut, onAvatarCh
           onSave={handleSave}
           onRequireAuth={onRequireAuth}
         />
+      )}
+
+      {/* Collection detail modal */}
+      {selectedCollection && (
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 px-4 pb-4 sm:pb-0">
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold text-slate-900">{selectedCollection.name}</h2>
+                <p className="text-xs text-slate-400 mt-0.5">{selectedCollection.count} {selectedCollection.count === 1 ? "recipe" : "recipes"}</p>
+              </div>
+              <button onClick={() => setSelectedCollection(null)} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
+            </div>
+            <div className="p-4 space-y-3">
+              {collectionRecipesLoading ? (
+                <div className="space-y-3">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="bg-slate-50 rounded-xl p-4 animate-pulse">
+                      <div className="h-4 bg-slate-200 rounded w-2/3 mb-2" />
+                      <div className="h-3 bg-slate-100 rounded w-1/3" />
+                    </div>
+                  ))}
+                </div>
+              ) : collectionRecipes.length === 0 ? (
+                <p className="text-sm text-slate-400 text-center py-8">No recipes in this collection yet.</p>
+              ) : (
+                collectionRecipes.map((r) => (
+                  <div key={r.id} className="bg-slate-50 rounded-xl overflow-hidden">
+                    <button
+                      onClick={() => setDetail(r)}
+                      className="w-full text-left p-4 hover:bg-slate-100 transition-colors"
+                    >
+                      {r.image_url && (
+                        <img src={r.image_url} alt={r.name} className="w-full h-28 object-cover rounded-lg mb-2" />
+                      )}
+                      <p className="font-medium text-slate-900 text-sm">{r.name}</p>
+                      {r.description && <p className="text-xs text-slate-400 mt-0.5 line-clamp-1">{r.description}</p>}
+                      <div className="flex items-center gap-3 mt-2 text-xs text-slate-400">
+                        <span>♥ {r.like_count}</span>
+                        <span>💬 {r.comment_count}</span>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => removeFromCollection(r.id)}
+                      className="w-full border-t border-slate-200 py-2 text-xs text-slate-400 hover:text-red-400 transition-colors"
+                    >
+                      Remove from collection
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add to collection picker */}
+      {addingToCollection && (
+        <div className="fixed inset-0 bg-black/40 z-[60] flex items-end" onClick={() => setAddingToCollection(null)}>
+          <div className="bg-white w-full rounded-t-2xl px-5 pt-5 pb-10 max-h-[70vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-slate-900">Add to collection</h3>
+              <button onClick={() => setAddingToCollection(null)} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
+            </div>
+            {collections.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-6">No collections yet. Go to Collections tab to create one.</p>
+            ) : (
+              <div className="space-y-1">
+                {collections.map((col) => (
+                  <button
+                    key={col.id}
+                    onClick={() => toggleRecipeInCollection(col.id)}
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl hover:bg-slate-50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg">📁</span>
+                      <div className="text-left">
+                        <p className="text-sm text-slate-700 font-medium">{col.name}</p>
+                        <p className="text-xs text-slate-400">{col.count} recipes</p>
+                      </div>
+                    </div>
+                    {collectionMemberships.has(col.id) && (
+                      <span className="text-green-600 font-bold text-sm">✓</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Crop modal */}
