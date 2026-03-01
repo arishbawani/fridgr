@@ -5,6 +5,7 @@ import DayTracker, { logMeal } from "@/components/DayTracker";
 import CommunityFeed from "@/components/CommunityFeed";
 import AuthModal from "@/components/AuthModal";
 import ProfilePage from "@/components/ProfilePage";
+import NotificationsPanel from "@/components/NotificationsPanel";
 import { createClient } from "@/lib/supabase";
 import { User } from "@supabase/supabase-js";
 
@@ -49,6 +50,8 @@ export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   const supabase = createClient();
 
@@ -69,9 +72,27 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!user) { setAvatarUrl(null); return; }
+    if (!user) { setAvatarUrl(null); setUnreadCount(0); return; }
     supabase.from("profiles").select("avatar_url").eq("id", user.id).single()
       .then(({ data }) => setAvatarUrl(data?.avatar_url ?? null));
+
+    // Fetch initial unread count
+    supabase.from("notifications").select("id", { count: "exact", head: true })
+      .eq("user_id", user.id).eq("read", false)
+      .then(({ count }) => setUnreadCount(count ?? 0));
+
+    // Real-time: increment badge on new notification
+    const channel = supabase
+      .channel(`notifications:${user.id}`)
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "notifications",
+        filter: `user_id=eq.${user.id}`,
+      }, () => setUnreadCount((c) => c + 1))
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [user]);
 
   useEffect(() => {
@@ -211,22 +232,38 @@ export default function Home() {
             <h1 className="text-3xl font-bold text-slate-900 tracking-tight">fridgr</h1>
             <p className="text-slate-500 mt-1">Turn what you have into what to eat.</p>
           </div>
-          <button
-            onClick={() => user ? setView("profile") : setShowAuthModal(true)}
-            className={`w-10 h-10 rounded-full overflow-hidden flex items-center justify-center shrink-0 transition-all ${
-              view === "profile"
-                ? "ring-2 ring-green-500 ring-offset-2"
-                : "hover:ring-2 hover:ring-slate-300 hover:ring-offset-1"
-            } ${avatarUrl ? "" : "bg-green-100 text-green-700 font-bold text-sm"}`}
-          >
-            {avatarUrl ? (
-              <img src={avatarUrl} alt="profile" className="w-full h-full object-cover" />
-            ) : user ? (
-              (user.user_metadata?.full_name || user.email || "?").slice(0, 2).toUpperCase()
-            ) : (
-              <span className="text-slate-400 text-lg">👤</span>
+          <div className="flex items-center gap-2">
+            {user && (
+              <button
+                onClick={() => setShowNotifications(true)}
+                className="relative w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors"
+                aria-label="Notifications"
+              >
+                <span className="text-xl">🔔</span>
+                {unreadCount > 0 && (
+                  <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center leading-none">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
+              </button>
             )}
-          </button>
+            <button
+              onClick={() => user ? setView("profile") : setShowAuthModal(true)}
+              className={`w-10 h-10 rounded-full overflow-hidden flex items-center justify-center shrink-0 transition-all ${
+                view === "profile"
+                  ? "ring-2 ring-green-500 ring-offset-2"
+                  : "hover:ring-2 hover:ring-slate-300 hover:ring-offset-1"
+              } ${avatarUrl ? "" : "bg-green-100 text-green-700 font-bold text-sm"}`}
+            >
+              {avatarUrl ? (
+                <img src={avatarUrl} alt="profile" className="w-full h-full object-cover" />
+              ) : user ? (
+                (user.user_metadata?.full_name || user.email || "?").slice(0, 2).toUpperCase()
+              ) : (
+                <span className="text-slate-400 text-lg">👤</span>
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Tab switcher */}
@@ -407,6 +444,14 @@ export default function Home() {
         <AuthModal
           onClose={() => setShowAuthModal(false)}
           onSuccess={() => setShowAuthModal(false)}
+        />
+      )}
+
+      {showNotifications && user && (
+        <NotificationsPanel
+          user={user}
+          onClose={() => setShowNotifications(false)}
+          onMarkRead={() => setUnreadCount(0)}
         />
       )}
     </main>

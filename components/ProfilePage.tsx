@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase";
 import { User } from "@supabase/supabase-js";
 import CommunityRecipeCard, { CommunityRecipe } from "./CommunityRecipeCard";
 import RecipeDetailModal from "./RecipeDetailModal";
+import ImageCropModal from "./ImageCropModal";
 
 type Profile = {
   display_name: string | null;
@@ -60,6 +61,7 @@ export default function ProfilePage({ user, onRequireAuth, onSignOut, onAvatarCh
   const [saveError, setSaveError] = useState("");
   const [saving, setSaving] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
 
   const [profileTab, setProfileTab] = useState<"posts" | "saved">("posts");
   const [posts, setPosts] = useState<CommunityRecipe[]>([]);
@@ -110,12 +112,22 @@ export default function ProfilePage({ user, onRequireAuth, onSignOut, onAvatarCh
     setRecipesLoading(false);
   }
 
-  async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
-    if (!file || !user) return;
+    if (!file) return;
+    // Reset input so the same file can be selected again after cancel
+    e.target.value = "";
+    const reader = new FileReader();
+    reader.onload = () => setCropImageSrc(reader.result as string);
+    reader.readAsDataURL(file);
+  }
+
+  async function handleCropApply(blob: Blob) {
+    if (!user) return;
+    setCropImageSrc(null);
     setAvatarUploading(true);
     const path = `${user.id}/avatar`;
-    await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+    await supabase.storage.from("avatars").upload(path, blob, { upsert: true, contentType: "image/jpeg" });
     const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
     const avatarUrl = `${urlData.publicUrl}?t=${Date.now()}`;
     await supabase.from("profiles").update({ avatar_url: avatarUrl }).eq("id", user.id);
@@ -361,6 +373,15 @@ export default function ProfilePage({ user, onRequireAuth, onSignOut, onAvatarCh
           onLike={handleLike}
           onSave={handleSave}
           onRequireAuth={onRequireAuth}
+        />
+      )}
+
+      {/* Crop modal */}
+      {cropImageSrc && (
+        <ImageCropModal
+          imageSrc={cropImageSrc}
+          onApply={handleCropApply}
+          onCancel={() => setCropImageSrc(null)}
         />
       )}
     </div>

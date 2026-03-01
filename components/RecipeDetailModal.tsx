@@ -2,7 +2,7 @@
 import { useState, useEffect, KeyboardEvent } from "react";
 import { createClient } from "@/lib/supabase";
 import { User } from "@supabase/supabase-js";
-import { CommunityRecipe } from "./CommunityRecipeCard";
+import { CommunityRecipe, AvatarCircle } from "./CommunityRecipeCard";
 
 const ADMIN_ID = "a1c54fac-7593-40cf-901b-b5756c3f68e8";
 
@@ -11,6 +11,7 @@ type Comment = {
   content: string;
   created_at: string;
   author_name: string | null;
+  author_avatar_url: string | null;
 };
 
 type Props = {
@@ -20,6 +21,7 @@ type Props = {
   onLike: (id: string, liked: boolean) => void;
   onSave: (id: string, saved: boolean) => void;
   onRequireAuth: () => void;
+  userAvatarUrl?: string | null;
   onEdit?: (recipe: CommunityRecipe) => void;
   onDelete?: (id: string) => void;
 };
@@ -31,6 +33,7 @@ export default function RecipeDetailModal({
   onLike,
   onSave,
   onRequireAuth,
+  userAvatarUrl,
   onEdit,
   onDelete,
 }: Props) {
@@ -79,10 +82,24 @@ export default function RecipeDetailModal({
     const authorName = user.user_metadata?.full_name || user.email?.split("@")[0] || "User";
     const { data } = await supabase
       .from("recipe_comments")
-      .insert({ user_id: user.id, recipe_id: recipe.id, content, author_name: authorName })
+      .insert({ user_id: user.id, recipe_id: recipe.id, content, author_name: authorName, author_avatar_url: userAvatarUrl ?? null })
       .select("*")
       .single();
     if (data) setComments((prev) => [...prev, data]);
+
+    // Notify recipe owner (not yourself)
+    if (recipe.user_id !== user.id) {
+      supabase.from("notifications").insert({
+        user_id: recipe.user_id,
+        actor_id: user.id,
+        actor_name: authorName,
+        actor_avatar_url: userAvatarUrl ?? null,
+        type: "comment",
+        recipe_id: recipe.id,
+        recipe_name: recipe.name,
+        comment_preview: content.slice(0, 80),
+      });
+    }
   }
 
   function handleLike() {
@@ -133,11 +150,14 @@ export default function RecipeDetailModal({
         <div className="p-5 space-y-4">
           {recipe.description && <p className="text-slate-500 text-sm">{recipe.description}</p>}
 
-          {/* Meta row */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
-            {recipe.prep_time && <span>⏱ {recipe.prep_time}</span>}
-            {recipe.servings && <span>🍽 {recipe.servings} servings</span>}
-            <span>by {recipe.author_name ?? "Anonymous"}</span>
+          {/* Author + meta row */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <div className="flex items-center gap-1.5">
+              <AvatarCircle name={recipe.author_name} url={recipe.author_avatar_url} size={6} />
+              <span className="text-xs text-slate-500">{recipe.author_name ?? "Anonymous"}</span>
+            </div>
+            {recipe.prep_time && <span className="text-xs text-slate-400">⏱ {recipe.prep_time}</span>}
+            {recipe.servings && <span className="text-xs text-slate-400">🍽 {recipe.servings} servings</span>}
             {canFollow && (
               <button
                 onClick={handleFollow}
@@ -219,9 +239,12 @@ export default function RecipeDetailModal({
             ) : (
               <div className="space-y-3 mb-4">
                 {comments.map((c) => (
-                  <div key={c.id}>
-                    <p className="text-xs text-slate-400 mb-0.5">{c.author_name ?? "Anonymous"}</p>
-                    <p className="text-sm text-slate-700">{c.content}</p>
+                  <div key={c.id} className="flex gap-2.5">
+                    <AvatarCircle name={c.author_name} url={c.author_avatar_url} size={7} />
+                    <div>
+                      <p className="text-xs text-slate-400 mb-0.5">{c.author_name ?? "Anonymous"}</p>
+                      <p className="text-sm text-slate-700">{c.content}</p>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -229,20 +252,23 @@ export default function RecipeDetailModal({
 
             {user ? (
               <div className="flex gap-2 mt-3">
-                <input
-                  placeholder="Add a comment..."
-                  value={commentText}
-                  onChange={(e) => setCommentText(e.target.value)}
-                  onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => e.key === "Enter" && postComment()}
-                  className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500"
-                />
-                <button
-                  onClick={postComment}
-                  disabled={!commentText.trim()}
-                  className="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-60"
-                >
-                  Post
-                </button>
+                <AvatarCircle name={user.user_metadata?.full_name || user.email} url={userAvatarUrl ?? null} size={7} />
+                <div className="flex flex-1 gap-2">
+                  <input
+                    placeholder="Add a comment..."
+                    value={commentText}
+                    onChange={(e) => setCommentText(e.target.value)}
+                    onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => e.key === "Enter" && postComment()}
+                    className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                  <button
+                    onClick={postComment}
+                    disabled={!commentText.trim()}
+                    className="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-60"
+                  >
+                    Post
+                  </button>
+                </div>
               </div>
             ) : (
               <button

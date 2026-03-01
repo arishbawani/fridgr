@@ -13,6 +13,7 @@ export type CommunityRecipe = {
   steps: string[] | null;
   created_at: string;
   author_name: string | null;
+  author_avatar_url: string | null;
   like_count: number;
   comment_count: number;
   user_liked: boolean;
@@ -26,6 +27,21 @@ type Props = {
   onOpen: (recipe: CommunityRecipe) => void;
   requireAuth: () => boolean;
 };
+
+function AvatarCircle({ name, url, size = 6 }: { name: string | null; url: string | null; size?: number }) {
+  const initial = (name ?? "?").slice(0, 1).toUpperCase();
+  const px = size * 4;
+  return (
+    <div
+      className="rounded-full overflow-hidden bg-green-100 text-green-700 font-bold text-xs flex items-center justify-center shrink-0"
+      style={{ width: px, height: px, minWidth: px }}
+    >
+      {url ? <img src={url} alt="" className="w-full h-full object-cover" /> : initial}
+    </div>
+  );
+}
+
+export { AvatarCircle };
 
 export default function CommunityRecipeCard({ recipe, onLike, onSave, onOpen, requireAuth }: Props) {
   const [liked, setLiked] = useState(recipe.user_liked);
@@ -59,15 +75,18 @@ export default function CommunityRecipeCard({ recipe, onLike, onSave, onOpen, re
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       <button className="w-full text-left p-5" onClick={() => onOpen(recipe)}>
-        <div className="flex items-start justify-between gap-3 mb-1">
+        <div className="flex items-start justify-between gap-3 mb-2">
           <h3 className="font-semibold text-slate-900 text-base leading-tight">{recipe.name}</h3>
           {recipe.prep_time && (
             <span className="text-xs text-slate-400 shrink-0 mt-0.5">{recipe.prep_time}</span>
           )}
         </div>
-        <p className="text-xs text-slate-400 mb-2">
-          by {recipe.author_name ?? "Anonymous"} · {timeAgo}
-        </p>
+        <div className="flex items-center gap-1.5 mb-2">
+          <AvatarCircle name={recipe.author_name} url={recipe.author_avatar_url} size={6} />
+          <p className="text-xs text-slate-400">
+            {recipe.author_name ?? "Anonymous"} · {timeAgo}
+          </p>
+        </div>
         {recipe.description && (
           <p className="text-sm text-slate-500 mb-3 line-clamp-2">{recipe.description}</p>
         )}

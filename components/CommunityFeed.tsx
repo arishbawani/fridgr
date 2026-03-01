@@ -19,6 +19,7 @@ export default function CommunityFeed({
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [detail, setDetail] = useState<CommunityRecipe | null>(null);
+  const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
 
   // Create/edit form state
   const [form, setForm] = useState({ name: "", description: "", prep_time: "", servings: "" });
@@ -31,7 +32,15 @@ export default function CommunityFeed({
   const [submitError, setSubmitError] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  useEffect(() => { fetchRecipes(); }, [user]);
+  useEffect(() => {
+    fetchRecipes();
+    if (user) {
+      supabase.from("profiles").select("avatar_url").eq("id", user.id).single()
+        .then(({ data }) => setUserAvatarUrl(data?.avatar_url ?? null));
+    } else {
+      setUserAvatarUrl(null);
+    }
+  }, [user]);
 
   async function fetchRecipes() {
     setLoading(true);
@@ -80,6 +89,20 @@ export default function CommunityFeed({
     if (!user) return;
     if (liked) {
       await supabase.from("recipe_likes").insert({ user_id: user.id, recipe_id: id });
+      // Notify recipe owner (not yourself)
+      const recipe = recipes.find((r) => r.id === id);
+      if (recipe && recipe.user_id !== user.id) {
+        const actorName = user.user_metadata?.full_name || user.email?.split("@")[0] || "Someone";
+        supabase.from("notifications").insert({
+          user_id: recipe.user_id,
+          actor_id: user.id,
+          actor_name: actorName,
+          actor_avatar_url: userAvatarUrl,
+          type: "like",
+          recipe_id: id,
+          recipe_name: recipe.name,
+        });
+      }
     } else {
       await supabase.from("recipe_likes").delete().eq("user_id", user.id).eq("recipe_id", id);
     }
@@ -144,6 +167,7 @@ export default function CommunityFeed({
     const payload = {
       user_id: user.id,
       author_name: user.user_metadata?.full_name || user.email?.split("@")[0] || "User",
+      author_avatar_url: userAvatarUrl,
       name: form.name.trim(),
       description: form.description.trim() || null,
       prep_time: form.prep_time.trim() || null,
@@ -346,6 +370,7 @@ export default function CommunityFeed({
           onLike={handleLike}
           onSave={handleSave}
           onRequireAuth={onRequireAuth}
+          userAvatarUrl={userAvatarUrl}
           onEdit={startEdit}
           onDelete={handleDelete}
         />
