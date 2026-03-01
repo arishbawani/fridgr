@@ -237,27 +237,27 @@ export default function CommunityFeed({
                 placeholder="Recipe name *"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500"
               />
               <input
                 placeholder="Short description"
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
-                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500"
               />
               <div className="grid grid-cols-2 gap-3">
                 <input
                   placeholder="Prep time (e.g. 20 min)"
                   value={form.prep_time}
                   onChange={(e) => setForm({ ...form, prep_time: e.target.value })}
-                  className="border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  className="border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500"
                 />
                 <input
                   placeholder="Servings"
                   inputMode="numeric"
                   value={form.servings}
                   onChange={(e) => setForm({ ...form, servings: e.target.value.replace(/\D/g, "") })}
-                  className="border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  className="border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500"
                 />
               </div>
 
@@ -270,7 +270,7 @@ export default function CommunityFeed({
                     value={ingredientInput}
                     onChange={(e) => setIngredientInput(e.target.value)}
                     onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => e.key === "Enter" && addIngredient()}
-                    className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                    className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500"
                   />
                   <button onClick={addIngredient} className="bg-slate-100 text-slate-700 px-3 py-2 rounded-xl text-sm font-medium hover:bg-slate-200 transition-colors">Add</button>
                 </div>
@@ -295,7 +295,7 @@ export default function CommunityFeed({
                     value={stepInput}
                     onChange={(e) => setStepInput(e.target.value)}
                     onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => e.key === "Enter" && addStep()}
-                    className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                    className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500"
                   />
                   <button onClick={addStep} className="bg-slate-100 text-slate-700 px-3 py-2 rounded-xl text-sm font-medium hover:bg-slate-200 transition-colors">Add</button>
                 </div>
@@ -324,7 +324,7 @@ export default function CommunityFeed({
                         placeholder="0"
                         value={macros[key]}
                         onChange={(e) => setMacros({ ...macros, [key]: e.target.value.replace(/\D/g, "") })}
-                        className="w-full border border-slate-200 rounded-lg px-2 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-green-500"
+                        className="w-full border border-slate-200 rounded-lg px-2 py-2 text-sm text-slate-900 placeholder-slate-400 text-center focus:outline-none focus:ring-2 focus:ring-green-500"
                       />
                     </div>
                   ))}
@@ -420,7 +420,7 @@ export default function CommunityFeed({
                       value={commentText}
                       onChange={(e) => setCommentText(e.target.value)}
                       onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => e.key === "Enter" && postComment()}
-                      className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                      className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500"
                     />
                     <button
                       onClick={postComment}
