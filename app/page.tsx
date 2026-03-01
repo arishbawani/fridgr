@@ -1,6 +1,7 @@
 "use client";
 import { useState, KeyboardEvent, useEffect } from "react";
 import RecipeCard from "@/components/RecipeCard";
+import DayTracker, { logMeal } from "@/components/DayTracker";
 
 type Recipe = {
   name: string;
@@ -27,6 +28,7 @@ export default function Home() {
   const [minProtein, setMinProtein] = useState("");
   const [dietary, setDietary] = useState<string[]>([]);
   const [cuisine, setCuisine] = useState<string[]>([]);
+  const [view, setView] = useState<"recipes" | "day">("recipes");
   const [loading, setLoading] = useState(false);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [error, setError] = useState("");
@@ -164,11 +166,34 @@ export default function Home() {
     <main className="min-h-screen bg-slate-50">
       <div className="max-w-lg mx-auto px-4 py-8">
         {/* Header */}
-        <div className="mb-8">
+        <div className="mb-6">
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">fridgr</h1>
           <p className="text-slate-500 mt-1">Turn what you have into what to eat.</p>
         </div>
 
+        {/* Tab switcher */}
+        <div className="flex gap-1 bg-slate-100 rounded-xl p-1 mb-6">
+          <button
+            onClick={() => setView("recipes")}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+              view === "recipes" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            Find Recipes
+          </button>
+          <button
+            onClick={() => setView("day")}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+              view === "day" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            My Day
+          </button>
+        </div>
+
+        {view === "day" && <DayTracker />}
+
+        {view === "recipes" && <>
         {/* Ingredient Input */}
         <section className="bg-white rounded-2xl border border-slate-200 p-5 mb-4 shadow-sm">
           <h2 className="font-semibold text-slate-900 mb-3">What&apos;s in your fridge?</h2>
@@ -301,11 +326,12 @@ export default function Home() {
             <h2 className="font-semibold text-slate-900 mb-3">{recipes.length} recipes found</h2>
             <div className="space-y-4">
               {recipes.map((recipe, i) => (
-                <RecipeCard key={i} recipe={recipe} />
+                <RecipeCard key={i} recipe={recipe} onLog={(r) => logMeal({ name: r.name, ...r.macros })} />
               ))}
             </div>
           </div>
         )}
+        </>}
       </div>
     </main>
   );

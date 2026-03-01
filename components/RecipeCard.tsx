@@ -12,8 +12,15 @@ type Recipe = {
   steps: string[];
 };
 
-export default function RecipeCard({ recipe }: { recipe: Recipe }) {
+export default function RecipeCard({ recipe, onLog }: { recipe: Recipe; onLog?: (recipe: Recipe) => void }) {
   const [open, setOpen] = useState(false);
+  const [logged, setLogged] = useState(false);
+
+  function handleLog() {
+    onLog?.(recipe);
+    setLogged(true);
+    setTimeout(() => setLogged(false), 2000);
+  }
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -37,6 +44,19 @@ export default function RecipeCard({ recipe }: { recipe: Recipe }) {
           <MacroChip label="fat" value={`${recipe.macros.fat}g`} color="bg-purple-50 text-purple-700" />
           <MacroChip label="fiber" value={`${recipe.macros.fiber}g`} color="bg-yellow-50 text-yellow-700" />
         </div>
+
+        {onLog && (
+          <button
+            onClick={handleLog}
+            className={`mt-3 w-full py-2 rounded-xl text-sm font-medium transition-colors ${
+              logged
+                ? "bg-green-100 text-green-700"
+                : "bg-slate-100 text-slate-600 hover:bg-green-50 hover:text-green-700"
+            }`}
+          >
+            {logged ? "✓ Logged" : "Log meal"}
+          </button>
+        )}
 
         {/* Ingredients */}
         <div className="mt-4">
