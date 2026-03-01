@@ -48,6 +48,7 @@ export default function Home() {
   const [error, setError] = useState("");
   const [user, setUser] = useState<User | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   const supabase = createClient();
 
@@ -66,6 +67,12 @@ export default function Home() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!user) { setAvatarUrl(null); return; }
+    supabase.from("profiles").select("avatar_url").eq("id", user.id).single()
+      .then(({ data }) => setAvatarUrl(data?.avatar_url ?? null));
+  }, [user]);
 
   useEffect(() => {
     localStorage.setItem("fridgr_view", view);
@@ -199,22 +206,40 @@ export default function Home() {
     <main className="min-h-screen bg-slate-50">
       <div className="max-w-lg mx-auto px-4 py-8">
         {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">fridgr</h1>
-          <p className="text-slate-500 mt-1">Turn what you have into what to eat.</p>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">fridgr</h1>
+            <p className="text-slate-500 mt-1">Turn what you have into what to eat.</p>
+          </div>
+          <button
+            onClick={() => user ? setView("profile") : setShowAuthModal(true)}
+            className={`w-10 h-10 rounded-full overflow-hidden flex items-center justify-center shrink-0 transition-all ${
+              view === "profile"
+                ? "ring-2 ring-green-500 ring-offset-2"
+                : "hover:ring-2 hover:ring-slate-300 hover:ring-offset-1"
+            } ${avatarUrl ? "" : "bg-green-100 text-green-700 font-bold text-sm"}`}
+          >
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="profile" className="w-full h-full object-cover" />
+            ) : user ? (
+              (user.user_metadata?.full_name || user.email || "?").slice(0, 2).toUpperCase()
+            ) : (
+              <span className="text-slate-400 text-lg">👤</span>
+            )}
+          </button>
         </div>
 
         {/* Tab switcher */}
         <div className="flex gap-1 bg-slate-100 rounded-xl p-1 mb-6">
-          {(["recipes", "community", "day", "profile"] as const).map((v) => (
+          {(["recipes", "community", "day"] as const).map((v) => (
             <button
               key={v}
               onClick={() => setView(v)}
-              className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${
+              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
                 view === v ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
               }`}
             >
-              {v === "recipes" ? "Recipes" : v === "community" ? "Community" : v === "day" ? "My Day" : "Profile"}
+              {v === "recipes" ? "Recipes" : v === "community" ? "Community" : "My Day"}
             </button>
           ))}
         </div>
@@ -233,6 +258,7 @@ export default function Home() {
             user={user}
             onRequireAuth={() => setShowAuthModal(true)}
             onSignOut={() => supabase.auth.signOut()}
+            onAvatarChange={setAvatarUrl}
           />
         )}
 

@@ -15,6 +15,7 @@ type Props = {
   user: User | null;
   onRequireAuth: () => void;
   onSignOut: () => void;
+  onAvatarChange?: (url: string | null) => void;
 };
 
 async function enrichRecipes(
@@ -47,7 +48,7 @@ async function enrichRecipes(
   }));
 }
 
-export default function ProfilePage({ user, onRequireAuth, onSignOut }: Props) {
+export default function ProfilePage({ user, onRequireAuth, onSignOut, onAvatarChange }: Props) {
   const supabase = createClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -120,6 +121,7 @@ export default function ProfilePage({ user, onRequireAuth, onSignOut }: Props) {
     await supabase.from("profiles").update({ avatar_url: avatarUrl }).eq("id", user.id);
     setProfile((p) => ({ ...p, avatar_url: avatarUrl }));
     setDraft((d) => ({ ...d, avatar_url: avatarUrl }));
+    onAvatarChange?.(avatarUrl);
     setAvatarUploading(false);
   }
 
