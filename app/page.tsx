@@ -237,7 +237,7 @@ export default function Home() {
           </button>
         </div>
 
-        {view === "day" && <DayTracker />}
+        {view === "day" && <DayTracker user={user} />}
 
         {view === "community" && (
           <CommunityFeed
@@ -379,7 +379,7 @@ export default function Home() {
             <h2 className="font-semibold text-slate-900 mb-3">{recipes.length} recipes found</h2>
             <div className="space-y-4">
               {recipes.map((recipe, i) => (
-                <RecipeCard key={i} recipe={recipe} onLog={(r) => logMeal({ name: r.name, ...r.macros })} />
+                <RecipeCard key={i} recipe={recipe} onLog={(r) => { logMeal({ name: r.name, ...r.macros }, user?.id); }} />
               ))}
             </div>
           </div>

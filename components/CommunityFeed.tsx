@@ -41,6 +41,7 @@ export default function CommunityFeed({
   const [macros, setMacros] = useState({ calories: "", protein: "", carbs: "", fat: "", fiber: "" });
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchRecipes();
@@ -138,6 +139,34 @@ export default function CommunityFeed({
     if (data) setComments((prev) => [...prev, data]);
   }
 
+  async function handleDelete(id: string) {
+    if (!window.confirm("Delete this recipe?")) return;
+    await supabase.from("community_recipes").delete().eq("id", id).eq("user_id", user!.id);
+    setDetail(null);
+    fetchRecipes();
+  }
+
+  function startEdit(recipe: CommunityRecipe) {
+    setDetail(null);
+    setEditingId(recipe.id);
+    setForm({
+      name: recipe.name,
+      description: recipe.description ?? "",
+      prep_time: recipe.prep_time ?? "",
+      servings: recipe.servings?.toString() ?? "",
+    });
+    setIngredients(recipe.ingredients ?? []);
+    setSteps(recipe.steps ?? []);
+    setMacros({
+      calories: recipe.macros?.calories?.toString() ?? "",
+      protein: recipe.macros?.protein?.toString() ?? "",
+      carbs: recipe.macros?.carbs?.toString() ?? "",
+      fat: recipe.macros?.fat?.toString() ?? "",
+      fiber: recipe.macros?.fiber?.toString() ?? "",
+    });
+    setShowCreate(true);
+  }
+
   function addIngredient() {
     const t = ingredientInput.trim().toLowerCase();
     if (t && !ingredients.includes(t)) setIngredients([...ingredients, t]);
@@ -175,7 +204,10 @@ export default function CommunityFeed({
         : null,
     };
 
-    const { error } = await supabase.from("community_recipes").insert(payload);
+    const { error } = editingId
+      ? await supabase.from("community_recipes").update(payload).eq("id", editingId).eq("user_id", user.id)
+      : await supabase.from("community_recipes").insert(payload);
+
     if (error) {
       setSubmitError(error.message);
       setSubmitting(false);
@@ -187,6 +219,7 @@ export default function CommunityFeed({
     setSteps([]);
     setMacros({ calories: "", protein: "", carbs: "", fat: "", fiber: "" });
     setShowCreate(false);
+    setEditingId(null);
     setSubmitting(false);
     fetchRecipes();
   }
@@ -242,8 +275,8 @@ export default function CommunityFeed({
         <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 px-4 pb-4 sm:pb-0">
           <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-              <h2 className="font-semibold text-slate-900">Share a Recipe</h2>
-              <button onClick={() => setShowCreate(false)} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
+              <h2 className="font-semibold text-slate-900">{editingId ? "Edit Recipe" : "Share a Recipe"}</h2>
+              <button onClick={() => { setShowCreate(false); setEditingId(null); }} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
             </div>
             <div className="p-5 space-y-4">
               <input
@@ -350,7 +383,7 @@ export default function CommunityFeed({
                 disabled={submitting || !form.name.trim()}
                 className="w-full bg-green-600 text-white py-3 rounded-xl font-semibold text-sm hover:bg-green-700 transition-colors disabled:opacity-60 mt-2"
               >
-                {submitting ? "Sharing..." : "Share Recipe"}
+                {submitting ? (editingId ? "Saving..." : "Sharing...") : (editingId ? "Save Changes" : "Share Recipe")}
               </button>
             </div>
           </div>
@@ -363,7 +396,15 @@ export default function CommunityFeed({
           <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white px-5 py-4 border-b border-slate-100 flex items-center justify-between">
               <h2 className="font-semibold text-slate-900 truncate pr-4">{detail.name}</h2>
-              <button onClick={() => setDetail(null)} className="text-slate-400 hover:text-slate-600 text-xl shrink-0">×</button>
+              <div className="flex items-center gap-2 shrink-0">
+                {user?.id === detail.user_id && (
+                  <>
+                    <button onClick={() => startEdit(detail)} className="text-xs text-slate-400 hover:text-green-600 transition-colors font-medium">Edit</button>
+                    <button onClick={() => handleDelete(detail.id)} className="text-xs text-slate-400 hover:text-red-500 transition-colors font-medium">Delete</button>
+                  </>
+                )}
+                <button onClick={() => setDetail(null)} className="text-slate-400 hover:text-slate-600 text-xl ml-1">×</button>
+              </div>
             </div>
             <div className="p-5 space-y-4">
               {detail.description && <p className="text-slate-500 text-sm">{detail.description}</p>}

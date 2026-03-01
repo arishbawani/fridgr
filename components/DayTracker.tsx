@@ -1,5 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase";
+import { User } from "@supabase/supabase-js";
 
 type MacroEntry = {
   name: string;
@@ -38,7 +40,7 @@ function today() {
   return new Date().toISOString().split("T")[0];
 }
 
-function loadLog(): MacroEntry[] {
+function loadLogLocal(): MacroEntry[] {
   try {
     const raw = localStorage.getItem(LOG_KEY);
     if (!raw) return [];
@@ -50,11 +52,11 @@ function loadLog(): MacroEntry[] {
   }
 }
 
-function saveLog(entries: MacroEntry[]) {
+function saveLogLocal(entries: MacroEntry[]) {
   localStorage.setItem(LOG_KEY, JSON.stringify({ date: today(), entries }));
 }
 
-function loadGoals(): DailyGoals {
+function loadGoalsLocal(): DailyGoals {
   try {
     const raw = localStorage.getItem(GOALS_KEY);
     if (!raw) return DEFAULT_GOALS;
@@ -64,16 +66,25 @@ function loadGoals(): DailyGoals {
   }
 }
 
-function saveGoals(goals: DailyGoals) {
+function saveGoalsLocal(goals: DailyGoals) {
   localStorage.setItem(GOALS_KEY, JSON.stringify(goals));
 }
 
-export function logMeal(entry: MacroEntry) {
-  const entries = loadLog();
-  saveLog([...entries, entry]);
+export async function logMeal(entry: MacroEntry, userId?: string) {
+  const entries = loadLogLocal();
+  const updated = [...entries, entry];
+  saveLogLocal(updated);
+
+  if (userId) {
+    const supabase = createClient();
+    await supabase.from("daily_logs").upsert(
+      { user_id: userId, date: today(), entries: updated },
+      { onConflict: "user_id,date" }
+    );
+  }
 }
 
-export default function DayTracker() {
+export default function DayTracker({ user }: { user: User | null }) {
   const [entries, setEntries] = useState<MacroEntry[]>([]);
   const [goals, setGoals] = useState<DailyGoals>(DEFAULT_GOALS);
   const [editingGoals, setEditingGoals] = useState(false);
@@ -82,11 +93,50 @@ export default function DayTracker() {
   const [showManual, setShowManual] = useState(false);
 
   useEffect(() => {
-    setEntries(loadLog());
-    const g = loadGoals();
+    async function loadData() {
+      if (user) {
+        const supabase = createClient();
+        const [logRes, goalsRes] = await Promise.all([
+          supabase.from("daily_logs").select("entries").eq("user_id", user.id).eq("date", today()).maybeSingle(),
+          supabase.from("user_goals").select("goals").eq("user_id", user.id).maybeSingle(),
+        ]);
+        setEntries(logRes.data?.entries ?? []);
+        const g = goalsRes.data ? { ...DEFAULT_GOALS, ...goalsRes.data.goals } : loadGoalsLocal();
+        setGoals(g);
+        setGoalDraft(g);
+      } else {
+        setEntries(loadLogLocal());
+        const g = loadGoalsLocal();
+        setGoals(g);
+        setGoalDraft(g);
+      }
+    }
+    loadData();
+  }, [user]);
+
+  async function persistEntries(updated: MacroEntry[]) {
+    setEntries(updated);
+    saveLogLocal(updated);
+    if (user) {
+      const supabase = createClient();
+      await supabase.from("daily_logs").upsert(
+        { user_id: user.id, date: today(), entries: updated },
+        { onConflict: "user_id,date" }
+      );
+    }
+  }
+
+  async function persistGoals(g: DailyGoals) {
     setGoals(g);
-    setGoalDraft(g);
-  }, []);
+    saveGoalsLocal(g);
+    if (user) {
+      const supabase = createClient();
+      await supabase.from("user_goals").upsert(
+        { user_id: user.id, goals: g },
+        { onConflict: "user_id" }
+      );
+    }
+  }
 
   const totals = entries.reduce(
     (acc, e) => ({
@@ -101,13 +151,11 @@ export default function DayTracker() {
 
   function removeEntry(index: number) {
     const updated = entries.filter((_, i) => i !== index);
-    setEntries(updated);
-    saveLog(updated);
+    persistEntries(updated);
   }
 
   function saveGoalEdits() {
-    setGoals(goalDraft);
-    saveGoals(goalDraft);
+    persistGoals(goalDraft);
     setEditingGoals(false);
   }
 
@@ -120,9 +168,7 @@ export default function DayTracker() {
       fat: Number(manualEntry.fat) || 0,
       fiber: Number(manualEntry.fiber) || 0,
     };
-    const updated = [...entries, entry];
-    setEntries(updated);
-    saveLog(updated);
+    persistEntries([...entries, entry]);
     setManualEntry({ name: "" });
     setShowManual(false);
   }
