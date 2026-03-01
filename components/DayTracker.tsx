@@ -159,7 +159,7 @@ export default function DayTracker() {
                   inputMode="numeric"
                   value={goalDraft[key]}
                   onChange={(e) => setGoalDraft({ ...goalDraft, [key]: Number(e.target.value.replace(/\D/g, "")) || 0 })}
-                  className="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  className="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-500"
                 />
               </div>
             ))}
@@ -247,7 +247,7 @@ export default function DayTracker() {
               placeholder="Name (e.g. Protein bar, Apple)"
               value={manualEntry.name || ""}
               onChange={(e) => setManualEntry({ ...manualEntry, name: e.target.value })}
-              className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500"
             />
             <div className="grid grid-cols-5 gap-2">
               {macros.map(({ key, label }) => (
@@ -259,7 +259,7 @@ export default function DayTracker() {
                     placeholder="0"
                     value={manualEntry[key] ?? ""}
                     onChange={(e) => setManualEntry({ ...manualEntry, [key]: e.target.value.replace(/\D/g, "") })}
-                    className="w-full border border-slate-200 rounded-lg px-2 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-green-500"
+                    className="w-full border border-slate-200 rounded-lg px-2 py-2 text-sm text-slate-900 placeholder-slate-400 text-center focus:outline-none focus:ring-2 focus:ring-green-500"
                   />
                 </div>
               ))}
