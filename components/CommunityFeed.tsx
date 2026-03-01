@@ -1,25 +1,62 @@
 "use client";
-import { useState, useEffect, KeyboardEvent } from "react";
+import { useState, useEffect, useRef, KeyboardEvent } from "react";
 import { createClient } from "@/lib/supabase";
 import { User } from "@supabase/supabase-js";
 import CommunityRecipeCard, { CommunityRecipe } from "./CommunityRecipeCard";
 import RecipeDetailModal from "./RecipeDetailModal";
+import UserProfileModal from "./UserProfileModal";
 
 const ADMIN_ID = "a1c54fac-7593-40cf-901b-b5756c3f68e8";
+
+type AIRecipe = {
+  name: string;
+  description: string;
+  prepTime: string;
+  servings: number;
+  macros: { calories: number; protein: number; carbs: number; fat: number; fiber: number };
+  have: string[];
+  need: string[];
+  steps: string[];
+};
+
+async function compressImage(file: File, maxWidth = 1200): Promise<Blob> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, maxWidth / img.width);
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((b) => resolve(b!), "image/jpeg", 0.85);
+    };
+    img.src = url;
+  });
+}
 
 export default function CommunityFeed({
   user,
   onRequireAuth,
+  initialRecipe,
+  onShareConsumed,
 }: {
   user: User | null;
   onRequireAuth: () => void;
+  initialRecipe?: AIRecipe | null;
+  onShareConsumed?: () => void;
 }) {
   const supabase = createClient();
+  const imageFileRef = useRef<HTMLInputElement>(null);
+
   const [recipes, setRecipes] = useState<CommunityRecipe[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [detail, setDetail] = useState<CommunityRecipe | null>(null);
   const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [viewingUserId, setViewingUserId] = useState<string | null>(null);
 
   // Create/edit form state
   const [form, setForm] = useState({ name: "", description: "", prep_time: "", servings: "" });
@@ -28,6 +65,8 @@ export default function CommunityFeed({
   const [stepInput, setStepInput] = useState("");
   const [steps, setSteps] = useState<string[]>([]);
   const [macros, setMacros] = useState({ calories: "", protein: "", carbs: "", fat: "", fiber: "" });
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageUploading, setImageUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -41,6 +80,30 @@ export default function CommunityFeed({
       setUserAvatarUrl(null);
     }
   }, [user]);
+
+  // Pre-fill form when sharing an AI-generated recipe
+  useEffect(() => {
+    if (!initialRecipe) return;
+    setForm({
+      name: initialRecipe.name,
+      description: initialRecipe.description,
+      prep_time: initialRecipe.prepTime,
+      servings: initialRecipe.servings.toString(),
+    });
+    setIngredients([...initialRecipe.have, ...initialRecipe.need]);
+    setSteps(initialRecipe.steps);
+    setMacros({
+      calories: initialRecipe.macros.calories.toString(),
+      protein: initialRecipe.macros.protein.toString(),
+      carbs: initialRecipe.macros.carbs.toString(),
+      fat: initialRecipe.macros.fat.toString(),
+      fiber: initialRecipe.macros.fiber.toString(),
+    });
+    setImageUrl(null);
+    setEditingId(null);
+    setShowCreate(true);
+    onShareConsumed?.();
+  }, [initialRecipe]);
 
   async function fetchRecipes() {
     setLoading(true);
@@ -89,7 +152,6 @@ export default function CommunityFeed({
     if (!user) return;
     if (liked) {
       await supabase.from("recipe_likes").insert({ user_id: user.id, recipe_id: id });
-      // Notify recipe owner (not yourself)
       const recipe = recipes.find((r) => r.id === id);
       if (recipe && recipe.user_id !== user.id) {
         const actorName = user.user_metadata?.full_name || user.email?.split("@")[0] || "Someone";
@@ -144,7 +206,31 @@ export default function CommunityFeed({
       fat: recipe.macros?.fat?.toString() ?? "",
       fiber: recipe.macros?.fiber?.toString() ?? "",
     });
+    setImageUrl(recipe.image_url ?? null);
     setShowCreate(true);
+  }
+
+  function closeForm() {
+    setShowCreate(false);
+    setEditingId(null);
+    setForm({ name: "", description: "", prep_time: "", servings: "" });
+    setIngredients([]); setSteps([]);
+    setMacros({ calories: "", protein: "", carbs: "", fat: "", fiber: "" });
+    setImageUrl(null);
+    setSubmitError("");
+  }
+
+  async function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+    e.target.value = "";
+    setImageUploading(true);
+    const blob = await compressImage(file);
+    const path = `${user.id}/${Date.now()}`;
+    await supabase.storage.from("recipe-photos").upload(path, blob, { upsert: true, contentType: "image/jpeg" });
+    const { data: urlData } = supabase.storage.from("recipe-photos").getPublicUrl(path);
+    setImageUrl(urlData.publicUrl);
+    setImageUploading(false);
   }
 
   function addIngredient() {
@@ -174,6 +260,7 @@ export default function CommunityFeed({
       servings: form.servings ? Number(form.servings) : null,
       ingredients: ingredients.length > 0 ? ingredients : null,
       steps: steps.length > 0 ? steps : null,
+      image_url: imageUrl,
       macros: Object.values(macros).some(Boolean)
         ? {
             calories: macros.calories ? Number(macros.calories) : undefined,
@@ -190,13 +277,17 @@ export default function CommunityFeed({
       : await supabase.from("community_recipes").insert(payload);
 
     if (error) { setSubmitError(error.message); setSubmitting(false); return; }
-
-    setForm({ name: "", description: "", prep_time: "", servings: "" });
-    setIngredients([]); setSteps([]);
-    setMacros({ calories: "", protein: "", carbs: "", fat: "", fiber: "" });
-    setShowCreate(false); setEditingId(null); setSubmitting(false);
+    closeForm();
     fetchRecipes();
   }
+
+  const filtered = searchQuery
+    ? recipes.filter((r) =>
+        r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.ingredients?.some((i) => i.includes(searchQuery.toLowerCase()))
+      )
+    : recipes;
 
   return (
     <div className="space-y-4">
@@ -211,6 +302,14 @@ export default function CommunityFeed({
         </button>
       </div>
 
+      {/* Search */}
+      <input
+        placeholder="Search recipes, ingredients..."
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+      />
+
       {/* Recipe list */}
       {loading ? (
         <div className="space-y-4">
@@ -222,13 +321,15 @@ export default function CommunityFeed({
             </div>
           ))}
         </div>
-      ) : recipes.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
-          <p className="text-slate-400 text-sm">No recipes yet. Be the first to share one!</p>
+          <p className="text-slate-400 text-sm">
+            {searchQuery ? `No recipes match "${searchQuery}".` : "No recipes yet. Be the first to share one!"}
+          </p>
         </div>
       ) : (
         <div className="space-y-4">
-          {recipes.map((r) => (
+          {filtered.map((r) => (
             <CommunityRecipeCard
               key={r.id}
               recipe={r}
@@ -236,6 +337,7 @@ export default function CommunityFeed({
               onSave={handleSave}
               onOpen={setDetail}
               requireAuth={requireAuth}
+              onAuthorClick={setViewingUserId}
             />
           ))}
         </div>
@@ -247,7 +349,7 @@ export default function CommunityFeed({
           <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white px-5 py-4 border-b border-slate-100 flex items-center justify-between">
               <h2 className="font-semibold text-slate-900">{editingId ? "Edit Recipe" : "Share a Recipe"}</h2>
-              <button onClick={() => { setShowCreate(false); setEditingId(null); }} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
+              <button onClick={closeForm} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
             </div>
             <div className="p-5 space-y-4">
               <input
@@ -262,6 +364,32 @@ export default function CommunityFeed({
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500"
               />
+
+              {/* Photo upload */}
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-2">Photo (optional)</label>
+                {imageUrl ? (
+                  <div className="relative">
+                    <img src={imageUrl} alt="preview" className="w-full h-40 object-cover rounded-xl" />
+                    <button
+                      onClick={() => setImageUrl(null)}
+                      className="absolute top-2 right-2 bg-black/50 text-white w-6 h-6 rounded-full text-sm flex items-center justify-center hover:bg-black/70"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => imageFileRef.current?.click()}
+                    disabled={imageUploading}
+                    className="w-full border-2 border-dashed border-slate-200 rounded-xl py-6 text-sm text-slate-400 hover:border-green-400 hover:text-green-500 transition-colors disabled:opacity-60"
+                  >
+                    {imageUploading ? "Uploading..." : "+ Add Photo"}
+                  </button>
+                )}
+                <input ref={imageFileRef} type="file" accept="image/*" className="hidden" onChange={handleImageSelect} />
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <input
                   placeholder="Prep time (e.g. 20 min)"
@@ -351,7 +479,7 @@ export default function CommunityFeed({
               {submitError && <p className="text-red-500 text-sm">{submitError}</p>}
               <button
                 onClick={submitRecipe}
-                disabled={submitting || !form.name.trim()}
+                disabled={submitting || !form.name.trim() || imageUploading}
                 className="w-full bg-green-600 text-white py-3 rounded-xl font-semibold text-sm hover:bg-green-700 transition-colors disabled:opacity-60 mt-2"
               >
                 {submitting ? (editingId ? "Saving..." : "Sharing...") : (editingId ? "Save Changes" : "Share Recipe")}
@@ -373,6 +501,17 @@ export default function CommunityFeed({
           userAvatarUrl={userAvatarUrl}
           onEdit={startEdit}
           onDelete={handleDelete}
+          onAuthorClick={setViewingUserId}
+        />
+      )}
+
+      {/* User profile modal */}
+      {viewingUserId && (
+        <UserProfileModal
+          userId={viewingUserId}
+          user={user}
+          onClose={() => setViewingUserId(null)}
+          onRequireAuth={onRequireAuth}
         />
       )}
     </div>

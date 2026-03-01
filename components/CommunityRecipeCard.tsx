@@ -14,6 +14,7 @@ export type CommunityRecipe = {
   created_at: string;
   author_name: string | null;
   author_avatar_url: string | null;
+  image_url: string | null;
   like_count: number;
   comment_count: number;
   user_liked: boolean;
@@ -26,6 +27,7 @@ type Props = {
   onSave: (id: string, saved: boolean) => void;
   onOpen: (recipe: CommunityRecipe) => void;
   requireAuth: () => boolean;
+  onAuthorClick?: (userId: string) => void;
 };
 
 function AvatarCircle({ name, url, size = 6 }: { name: string | null; url: string | null; size?: number }) {
@@ -43,7 +45,7 @@ function AvatarCircle({ name, url, size = 6 }: { name: string | null; url: strin
 
 export { AvatarCircle };
 
-export default function CommunityRecipeCard({ recipe, onLike, onSave, onOpen, requireAuth }: Props) {
+export default function CommunityRecipeCard({ recipe, onLike, onSave, onOpen, requireAuth, onAuthorClick }: Props) {
   const [liked, setLiked] = useState(recipe.user_liked);
   const [likeCount, setLikeCount] = useState(recipe.like_count);
   const [saved, setSaved] = useState(recipe.user_saved);
@@ -81,12 +83,25 @@ export default function CommunityRecipeCard({ recipe, onLike, onSave, onOpen, re
             <span className="text-xs text-slate-400 shrink-0 mt-0.5">{recipe.prep_time}</span>
           )}
         </div>
-        <div className="flex items-center gap-1.5 mb-2">
+
+        {recipe.image_url && (
+          <img
+            src={recipe.image_url}
+            alt={recipe.name}
+            className="w-full h-44 object-cover rounded-xl mb-3"
+          />
+        )}
+
+        <button
+          className="flex items-center gap-1.5 mb-2 hover:opacity-70 transition-opacity"
+          onClick={(e) => { e.stopPropagation(); onAuthorClick?.(recipe.user_id); }}
+        >
           <AvatarCircle name={recipe.author_name} url={recipe.author_avatar_url} size={6} />
           <p className="text-xs text-slate-400">
             {recipe.author_name ?? "Anonymous"} · {timeAgo}
           </p>
-        </div>
+        </button>
+
         {recipe.description && (
           <p className="text-sm text-slate-500 mb-3 line-clamp-2">{recipe.description}</p>
         )}

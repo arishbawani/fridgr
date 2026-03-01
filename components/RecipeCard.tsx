@@ -12,7 +12,8 @@ type Recipe = {
   steps: string[];
 };
 
-export default function RecipeCard({ recipe, onLog }: { recipe: Recipe; onLog?: (recipe: Recipe) => void }) {
+export { Recipe };
+export default function RecipeCard({ recipe, onLog, onShare }: { recipe: Recipe; onLog?: (recipe: Recipe) => void; onShare?: () => void }) {
   const [open, setOpen] = useState(false);
   const [logged, setLogged] = useState(false);
 
@@ -45,18 +46,28 @@ export default function RecipeCard({ recipe, onLog }: { recipe: Recipe; onLog?: 
           <MacroChip label="fiber" value={`${recipe.macros.fiber}g`} color="bg-yellow-50 text-yellow-700" />
         </div>
 
-        {onLog && (
-          <button
-            onClick={handleLog}
-            className={`mt-3 w-full py-2 rounded-xl text-sm font-medium transition-colors ${
-              logged
-                ? "bg-green-100 text-green-700"
-                : "bg-slate-100 text-slate-600 hover:bg-green-50 hover:text-green-700"
-            }`}
-          >
-            {logged ? "✓ Logged" : "Log meal"}
-          </button>
-        )}
+        <div className="flex gap-2 mt-3">
+          {onLog && (
+            <button
+              onClick={handleLog}
+              className={`flex-1 py-2 rounded-xl text-sm font-medium transition-colors ${
+                logged
+                  ? "bg-green-100 text-green-700"
+                  : "bg-slate-100 text-slate-600 hover:bg-green-50 hover:text-green-700"
+              }`}
+            >
+              {logged ? "✓ Logged" : "Log meal"}
+            </button>
+          )}
+          {onShare && (
+            <button
+              onClick={onShare}
+              className="flex-1 py-2 rounded-xl text-sm font-medium border border-green-500 text-green-600 hover:bg-green-50 transition-colors"
+            >
+              Share
+            </button>
+          )}
+        </div>
 
         {/* Ingredients */}
         <div className="mt-4">

@@ -1,6 +1,6 @@
 "use client";
 import { useState, KeyboardEvent, useEffect } from "react";
-import RecipeCard from "@/components/RecipeCard";
+import RecipeCard, { Recipe as RecipeType } from "@/components/RecipeCard";
 import DayTracker, { logMeal } from "@/components/DayTracker";
 import CommunityFeed from "@/components/CommunityFeed";
 import AuthModal from "@/components/AuthModal";
@@ -52,6 +52,7 @@ export default function Home() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [shareRecipe, setShareRecipe] = useState<RecipeType | null>(null);
 
   const supabase = createClient();
 
@@ -287,6 +288,8 @@ export default function Home() {
           <CommunityFeed
             user={user}
             onRequireAuth={() => setShowAuthModal(true)}
+            initialRecipe={shareRecipe}
+            onShareConsumed={() => setShareRecipe(null)}
           />
         )}
 
@@ -432,7 +435,12 @@ export default function Home() {
             <h2 className="font-semibold text-slate-900 mb-3">{recipes.length} recipes found</h2>
             <div className="space-y-4">
               {recipes.map((recipe, i) => (
-                <RecipeCard key={i} recipe={recipe} onLog={(r) => { logMeal({ name: r.name, ...r.macros }, user?.id); }} />
+                <RecipeCard
+                  key={i}
+                  recipe={recipe}
+                  onLog={(r) => { logMeal({ name: r.name, ...r.macros }, user?.id); }}
+                  onShare={() => { setShareRecipe(recipe); setView("community"); }}
+                />
               ))}
             </div>
           </div>

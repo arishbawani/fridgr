@@ -24,6 +24,7 @@ type Props = {
   userAvatarUrl?: string | null;
   onEdit?: (recipe: CommunityRecipe) => void;
   onDelete?: (id: string) => void;
+  onAuthorClick?: (userId: string) => void;
 };
 
 export default function RecipeDetailModal({
@@ -36,6 +37,7 @@ export default function RecipeDetailModal({
   userAvatarUrl,
   onEdit,
   onDelete,
+  onAuthorClick,
 }: Props) {
   const supabase = createClient();
   const [comments, setComments] = useState<Comment[]>([]);
@@ -148,14 +150,21 @@ export default function RecipeDetailModal({
         </div>
 
         <div className="p-5 space-y-4">
+          {recipe.image_url && (
+            <img src={recipe.image_url} alt={recipe.name} className="w-full h-52 object-cover rounded-xl" />
+          )}
+
           {recipe.description && <p className="text-slate-500 text-sm">{recipe.description}</p>}
 
           {/* Author + meta row */}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            <div className="flex items-center gap-1.5">
+            <button
+              className="flex items-center gap-1.5 hover:opacity-70 transition-opacity"
+              onClick={() => onAuthorClick?.(recipe.user_id)}
+            >
               <AvatarCircle name={recipe.author_name} url={recipe.author_avatar_url} size={6} />
               <span className="text-xs text-slate-500">{recipe.author_name ?? "Anonymous"}</span>
-            </div>
+            </button>
             {recipe.prep_time && <span className="text-xs text-slate-400">⏱ {recipe.prep_time}</span>}
             {recipe.servings && <span className="text-xs text-slate-400">🍽 {recipe.servings} servings</span>}
             {canFollow && (
