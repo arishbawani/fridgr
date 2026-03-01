@@ -2,6 +2,10 @@
 import { useState, KeyboardEvent, useEffect } from "react";
 import RecipeCard from "@/components/RecipeCard";
 import DayTracker, { logMeal } from "@/components/DayTracker";
+import CommunityFeed from "@/components/CommunityFeed";
+import AuthModal from "@/components/AuthModal";
+import { createClient } from "@/lib/supabase";
+import { User } from "@supabase/supabase-js";
 
 type Recipe = {
   name: string;
@@ -28,14 +32,31 @@ export default function Home() {
   const [minProtein, setMinProtein] = useState("");
   const [dietary, setDietary] = useState<string[]>([]);
   const [cuisine, setCuisine] = useState<string[]>([]);
-  const [view, setView] = useState<"recipes" | "day">("recipes");
+  const [view, setView] = useState<"recipes" | "community" | "day">("recipes");
   const [loading, setLoading] = useState(false);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [error, setError] = useState("");
+  const [user, setUser] = useState<User | null>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
+  const supabase = createClient();
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) setSavedCode(stored);
+
+    // Load current user session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (session?.user) setShowAuthModal(false);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   async function submitCode() {
@@ -166,9 +187,26 @@ export default function Home() {
     <main className="min-h-screen bg-slate-50">
       <div className="max-w-lg mx-auto px-4 py-8">
         {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">fridgr</h1>
-          <p className="text-slate-500 mt-1">Turn what you have into what to eat.</p>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">fridgr</h1>
+            <p className="text-slate-500 mt-1">Turn what you have into what to eat.</p>
+          </div>
+          {user ? (
+            <button
+              onClick={() => supabase.auth.signOut()}
+              className="text-xs text-slate-400 hover:text-slate-600 transition-colors"
+            >
+              Sign out
+            </button>
+          ) : (
+            <button
+              onClick={() => setShowAuthModal(true)}
+              className="text-xs font-medium text-green-600 hover:text-green-700 transition-colors"
+            >
+              Sign in
+            </button>
+          )}
         </div>
 
         {/* Tab switcher */}
@@ -182,6 +220,14 @@ export default function Home() {
             Find Recipes
           </button>
           <button
+            onClick={() => setView("community")}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+              view === "community" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            Community
+          </button>
+          <button
             onClick={() => setView("day")}
             className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
               view === "day" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
@@ -192,6 +238,13 @@ export default function Home() {
         </div>
 
         {view === "day" && <DayTracker />}
+
+        {view === "community" && (
+          <CommunityFeed
+            user={user}
+            onRequireAuth={() => setShowAuthModal(true)}
+          />
+        )}
 
         {view === "recipes" && <>
         {/* Ingredient Input */}
@@ -333,6 +386,13 @@ export default function Home() {
         )}
         </>}
       </div>
+
+      {showAuthModal && (
+        <AuthModal
+          onClose={() => setShowAuthModal(false)}
+          onSuccess={() => setShowAuthModal(false)}
+        />
+      )}
     </main>
   );
 }
