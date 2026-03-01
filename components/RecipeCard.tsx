@@ -12,7 +12,7 @@ type Recipe = {
   steps: string[];
 };
 
-export { Recipe };
+export type { Recipe };
 export default function RecipeCard({ recipe, onLog, onShare }: { recipe: Recipe; onLog?: (recipe: Recipe) => void; onShare?: () => void }) {
   const [open, setOpen] = useState(false);
   const [logged, setLogged] = useState(false);

@@ -1,6 +1,7 @@
 "use client";
 import { useState, KeyboardEvent, useEffect } from "react";
-import RecipeCard, { Recipe as RecipeType } from "@/components/RecipeCard";
+import RecipeCard from "@/components/RecipeCard";
+import type { Recipe as RecipeType } from "@/components/RecipeCard";
 import DayTracker, { logMeal } from "@/components/DayTracker";
 import CommunityFeed from "@/components/CommunityFeed";
 import AuthModal from "@/components/AuthModal";
