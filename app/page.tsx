@@ -4,6 +4,7 @@ import RecipeCard from "@/components/RecipeCard";
 import DayTracker, { logMeal } from "@/components/DayTracker";
 import CommunityFeed from "@/components/CommunityFeed";
 import AuthModal from "@/components/AuthModal";
+import ProfilePage from "@/components/ProfilePage";
 import { createClient } from "@/lib/supabase";
 import { User } from "@supabase/supabase-js";
 
@@ -19,7 +20,10 @@ type Recipe = {
 };
 
 const DIETARY_OPTIONS = ["Vegetarian", "Vegan", "Gluten-Free", "Dairy-Free", "Low-Carb", "Halal", "Kosher"];
-const CUISINE_OPTIONS = ["Mexican", "Chinese", "Indian"];
+const CUISINE_OPTIONS = [
+  "Mexican", "Chinese", "Indian", "Italian", "Japanese",
+  "Thai", "Mediterranean", "American", "Korean", "Middle Eastern", "French", "Greek",
+];
 const STORAGE_KEY = "fridgr_access_code";
 
 export default function Home() {
@@ -32,10 +36,10 @@ export default function Home() {
   const [minProtein, setMinProtein] = useState("");
   const [dietary, setDietary] = useState<string[]>([]);
   const [cuisine, setCuisine] = useState<string[]>([]);
-  const [view, setView] = useState<"recipes" | "community" | "day">(() => {
+  const [view, setView] = useState<"recipes" | "community" | "day" | "profile">(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("fridgr_view");
-      if (saved === "recipes" || saved === "community" || saved === "day") return saved;
+      if (saved === "recipes" || saved === "community" || saved === "day" || saved === "profile") return saved;
     }
     return "recipes";
   });
@@ -51,12 +55,10 @@ export default function Home() {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) setSavedCode(stored);
 
-    // Load current user session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
     });
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
       if (session?.user) setShowAuthModal(false);
@@ -197,54 +199,24 @@ export default function Home() {
     <main className="min-h-screen bg-slate-50">
       <div className="max-w-lg mx-auto px-4 py-8">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">fridgr</h1>
-            <p className="text-slate-500 mt-1">Turn what you have into what to eat.</p>
-          </div>
-          {user ? (
-            <button
-              onClick={() => supabase.auth.signOut()}
-              className="text-xs text-slate-400 hover:text-slate-600 transition-colors"
-            >
-              Sign out
-            </button>
-          ) : (
-            <button
-              onClick={() => setShowAuthModal(true)}
-              className="text-xs font-medium text-green-600 hover:text-green-700 transition-colors"
-            >
-              Sign in
-            </button>
-          )}
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">fridgr</h1>
+          <p className="text-slate-500 mt-1">Turn what you have into what to eat.</p>
         </div>
 
         {/* Tab switcher */}
         <div className="flex gap-1 bg-slate-100 rounded-xl p-1 mb-6">
-          <button
-            onClick={() => setView("recipes")}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-              view === "recipes" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            Find Recipes
-          </button>
-          <button
-            onClick={() => setView("community")}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-              view === "community" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            Community
-          </button>
-          <button
-            onClick={() => setView("day")}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-              view === "day" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            My Day
-          </button>
+          {(["recipes", "community", "day", "profile"] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${
+                view === v ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              {v === "recipes" ? "Recipes" : v === "community" ? "Community" : v === "day" ? "My Day" : "Profile"}
+            </button>
+          ))}
         </div>
 
         {view === "day" && <DayTracker user={user} />}
@@ -253,6 +225,14 @@ export default function Home() {
           <CommunityFeed
             user={user}
             onRequireAuth={() => setShowAuthModal(true)}
+          />
+        )}
+
+        {view === "profile" && (
+          <ProfilePage
+            user={user}
+            onRequireAuth={() => setShowAuthModal(true)}
+            onSignOut={() => supabase.auth.signOut()}
           />
         )}
 
@@ -370,7 +350,7 @@ export default function Home() {
 
         {loading && (
           <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
+            {[1, 2, 3, 4, 5].map((i) => (
               <div key={i} className="bg-white rounded-2xl border border-slate-200 p-5 animate-pulse">
                 <div className="h-5 bg-slate-200 rounded-full w-2/3 mb-2" />
                 <div className="h-3 bg-slate-100 rounded-full w-1/2 mb-4" />

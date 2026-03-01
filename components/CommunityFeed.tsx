@@ -3,13 +3,7 @@ import { useState, useEffect, KeyboardEvent } from "react";
 import { createClient } from "@/lib/supabase";
 import { User } from "@supabase/supabase-js";
 import CommunityRecipeCard, { CommunityRecipe } from "./CommunityRecipeCard";
-
-type Comment = {
-  id: string;
-  content: string;
-  created_at: string;
-  author_name: string | null;
-};
+import RecipeDetailModal from "./RecipeDetailModal";
 
 const ADMIN_ID = "a1c54fac-7593-40cf-901b-b5756c3f68e8";
 
@@ -25,17 +19,9 @@ export default function CommunityFeed({
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [detail, setDetail] = useState<CommunityRecipe | null>(null);
-  const [comments, setComments] = useState<Comment[]>([]);
-  const [commentText, setCommentText] = useState("");
-  const [commentsLoading, setCommentsLoading] = useState(false);
 
-  // Create form state
-  const [form, setForm] = useState({
-    name: "",
-    description: "",
-    prep_time: "",
-    servings: "",
-  });
+  // Create/edit form state
+  const [form, setForm] = useState({ name: "", description: "", prep_time: "", servings: "" });
   const [ingredientInput, setIngredientInput] = useState("");
   const [ingredients, setIngredients] = useState<string[]>([]);
   const [stepInput, setStepInput] = useState("");
@@ -45,9 +31,7 @@ export default function CommunityFeed({
   const [submitError, setSubmitError] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchRecipes();
-  }, [user]);
+  useEffect(() => { fetchRecipes(); }, [user]);
 
   async function fetchRecipes() {
     setLoading(true);
@@ -59,7 +43,6 @@ export default function CommunityFeed({
     if (fetchError) { console.error("fetchRecipes error:", fetchError.message); }
     if (!recipesData || recipesData.length === 0) { setRecipes([]); setLoading(false); return; }
 
-    // Get likes and saves for current user
     const ids = recipesData.map((r) => r.id);
     const [likesRes, savesRes, likeCountsRes, commentCountsRes] = await Promise.all([
       user ? supabase.from("recipe_likes").select("recipe_id").eq("user_id", user.id).in("recipe_id", ids) : Promise.resolve({ data: [] }),
@@ -71,23 +54,19 @@ export default function CommunityFeed({
     const userLiked = new Set((likesRes.data ?? []).map((l: { recipe_id: string }) => l.recipe_id));
     const userSaved = new Set((savesRes.data ?? []).map((s: { recipe_id: string }) => s.recipe_id));
     const likeCounts = (likeCountsRes.data ?? []).reduce((acc: Record<string, number>, l: { recipe_id: string }) => {
-      acc[l.recipe_id] = (acc[l.recipe_id] || 0) + 1;
-      return acc;
+      acc[l.recipe_id] = (acc[l.recipe_id] || 0) + 1; return acc;
     }, {});
     const commentCounts = (commentCountsRes.data ?? []).reduce((acc: Record<string, number>, c: { recipe_id: string }) => {
-      acc[c.recipe_id] = (acc[c.recipe_id] || 0) + 1;
-      return acc;
+      acc[c.recipe_id] = (acc[c.recipe_id] || 0) + 1; return acc;
     }, {});
 
-    setRecipes(
-      recipesData.map((r) => ({
-        ...r,
-        like_count: likeCounts[r.id] || 0,
-        comment_count: commentCounts[r.id] || 0,
-        user_liked: userLiked.has(r.id),
-        user_saved: userSaved.has(r.id),
-      }))
-    );
+    setRecipes(recipesData.map((r) => ({
+      ...r,
+      like_count: likeCounts[r.id] || 0,
+      comment_count: commentCounts[r.id] || 0,
+      user_liked: userLiked.has(r.id),
+      user_saved: userSaved.has(r.id),
+    })));
     setLoading(false);
   }
 
@@ -113,32 +92,6 @@ export default function CommunityFeed({
     } else {
       await supabase.from("recipe_saves").delete().eq("user_id", user.id).eq("recipe_id", id);
     }
-  }
-
-  async function openDetail(recipe: CommunityRecipe) {
-    setDetail(recipe);
-    setCommentText("");
-    setCommentsLoading(true);
-    const { data } = await supabase
-      .from("recipe_comments")
-      .select("*")
-      .eq("recipe_id", recipe.id)
-      .order("created_at", { ascending: true });
-    setComments(data ?? []);
-    setCommentsLoading(false);
-  }
-
-  async function postComment() {
-    if (!user || !detail || !commentText.trim()) return;
-    const content = commentText.trim();
-    setCommentText("");
-    const authorName = user.user_metadata?.full_name || user.email?.split("@")[0] || "User";
-    const { data } = await supabase
-      .from("recipe_comments")
-      .insert({ user_id: user.id, recipe_id: detail.id, content, author_name: authorName })
-      .select("*")
-      .single();
-    if (data) setComments((prev) => [...prev, data]);
   }
 
   async function handleDelete(id: string) {
@@ -212,19 +165,12 @@ export default function CommunityFeed({
       ? await supabase.from("community_recipes").update(payload).eq("id", editingId).eq("user_id", user.id)
       : await supabase.from("community_recipes").insert(payload);
 
-    if (error) {
-      setSubmitError(error.message);
-      setSubmitting(false);
-      return;
-    }
+    if (error) { setSubmitError(error.message); setSubmitting(false); return; }
 
     setForm({ name: "", description: "", prep_time: "", servings: "" });
-    setIngredients([]);
-    setSteps([]);
+    setIngredients([]); setSteps([]);
     setMacros({ calories: "", protein: "", carbs: "", fat: "", fiber: "" });
-    setShowCreate(false);
-    setEditingId(null);
-    setSubmitting(false);
+    setShowCreate(false); setEditingId(null); setSubmitting(false);
     fetchRecipes();
   }
 
@@ -234,10 +180,7 @@ export default function CommunityFeed({
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-slate-900">Community Recipes</h2>
         <button
-          onClick={() => {
-            if (!requireAuth()) return;
-            setShowCreate(true);
-          }}
+          onClick={() => { if (!requireAuth()) return; setShowCreate(true); }}
           className="bg-green-600 text-white text-sm font-medium px-4 py-2 rounded-xl hover:bg-green-700 transition-colors"
         >
           + Share Recipe
@@ -267,14 +210,14 @@ export default function CommunityFeed({
               recipe={r}
               onLike={handleLike}
               onSave={handleSave}
-              onOpen={openDetail}
+              onOpen={setDetail}
               requireAuth={requireAuth}
             />
           ))}
         </div>
       )}
 
-      {/* Create modal */}
+      {/* Create / Edit modal */}
       {showCreate && (
         <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 px-4 pb-4 sm:pb-0">
           <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
@@ -396,111 +339,16 @@ export default function CommunityFeed({
 
       {/* Detail modal */}
       {detail && (
-        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 px-4 pb-4 sm:pb-0">
-          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-              <h2 className="font-semibold text-slate-900 truncate pr-4">{detail.name}</h2>
-              <div className="flex items-center gap-2 shrink-0">
-                {user?.id === detail.user_id && (
-                  <button onClick={() => startEdit(detail)} className="text-xs text-slate-400 hover:text-green-600 transition-colors font-medium">Edit</button>
-                )}
-                {(user?.id === detail.user_id || user?.id === ADMIN_ID) && (
-                  <button onClick={() => handleDelete(detail.id)} className="text-xs text-slate-400 hover:text-red-500 transition-colors font-medium">Delete</button>
-                )}
-                <button onClick={() => setDetail(null)} className="text-slate-400 hover:text-slate-600 text-xl ml-1">×</button>
-              </div>
-            </div>
-            <div className="p-5 space-y-4">
-              {detail.description && <p className="text-slate-500 text-sm">{detail.description}</p>}
-
-              <div className="flex gap-4 text-xs text-slate-400">
-                {detail.prep_time && <span>⏱ {detail.prep_time}</span>}
-                {detail.servings && <span>🍽 {detail.servings} servings</span>}
-                <span>by {detail.author_name ?? "Anonymous"}</span>
-              </div>
-
-              {detail.macros && (
-                <div className="grid grid-cols-5 gap-2">
-                  {detail.macros.calories && <div className="bg-orange-50 rounded-xl p-2 text-center"><div className="font-semibold text-sm text-orange-700">{detail.macros.calories}</div><div className="text-xs text-orange-600 opacity-70">cal</div></div>}
-                  {detail.macros.protein && <div className="bg-green-50 rounded-xl p-2 text-center"><div className="font-semibold text-sm text-green-700">{detail.macros.protein}g</div><div className="text-xs text-green-600 opacity-70">protein</div></div>}
-                  {detail.macros.carbs && <div className="bg-blue-50 rounded-xl p-2 text-center"><div className="font-semibold text-sm text-blue-700">{detail.macros.carbs}g</div><div className="text-xs text-blue-600 opacity-70">carbs</div></div>}
-                  {detail.macros.fat && <div className="bg-purple-50 rounded-xl p-2 text-center"><div className="font-semibold text-sm text-purple-700">{detail.macros.fat}g</div><div className="text-xs text-purple-600 opacity-70">fat</div></div>}
-                  {detail.macros.fiber && <div className="bg-yellow-50 rounded-xl p-2 text-center"><div className="font-semibold text-sm text-yellow-700">{detail.macros.fiber}g</div><div className="text-xs text-yellow-600 opacity-70">fiber</div></div>}
-                </div>
-              )}
-
-              {detail.ingredients && detail.ingredients.length > 0 && (
-                <div>
-                  <h3 className="font-medium text-slate-900 text-sm mb-2">Ingredients</h3>
-                  <div className="flex flex-wrap gap-1.5">
-                    {detail.ingredients.map((item) => (
-                      <span key={item} className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-full">{item}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {detail.steps && detail.steps.length > 0 && (
-                <div>
-                  <h3 className="font-medium text-slate-900 text-sm mb-2">Steps</h3>
-                  <ol className="space-y-2">
-                    {detail.steps.map((step, i) => (
-                      <li key={i} className="flex gap-3 text-sm text-slate-600">
-                        <span className="shrink-0 w-5 h-5 rounded-full bg-green-100 text-green-700 font-medium text-xs flex items-center justify-center mt-0.5">{i + 1}</span>
-                        <span>{step}</span>
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-              )}
-
-              {/* Comments */}
-              <div className="border-t border-slate-100 pt-4">
-                <h3 className="font-medium text-slate-900 text-sm mb-3">Comments</h3>
-                {commentsLoading ? (
-                  <p className="text-xs text-slate-400">Loading...</p>
-                ) : comments.length === 0 ? (
-                  <p className="text-xs text-slate-400">No comments yet.</p>
-                ) : (
-                  <div className="space-y-3 mb-4">
-                    {comments.map((c) => (
-                      <div key={c.id}>
-                        <p className="text-xs text-slate-400 mb-0.5">{c.author_name ?? "Anonymous"}</p>
-                        <p className="text-sm text-slate-700">{c.content}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {user ? (
-                  <div className="flex gap-2 mt-3">
-                    <input
-                      placeholder="Add a comment..."
-                      value={commentText}
-                      onChange={(e) => setCommentText(e.target.value)}
-                      onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => e.key === "Enter" && postComment()}
-                      className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500"
-                    />
-                    <button
-                      onClick={postComment}
-                      disabled={!commentText.trim()}
-                      className="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-green-700 transition-colors disabled:opacity-60"
-                    >
-                      Post
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => { setDetail(null); onRequireAuth(); }}
-                    className="text-sm text-green-600 font-medium hover:underline mt-2"
-                  >
-                    Sign in to comment
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+        <RecipeDetailModal
+          recipe={detail}
+          user={user}
+          onClose={() => setDetail(null)}
+          onLike={handleLike}
+          onSave={handleSave}
+          onRequireAuth={onRequireAuth}
+          onEdit={startEdit}
+          onDelete={handleDelete}
+        />
       )}
     </div>
   );

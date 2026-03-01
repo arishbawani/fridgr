@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
   const prompt = `You are a recipe assistant. The user has these ingredients: ${ingredients.join(", ")}.
 ${calorieText} ${proteinText} ${dietaryText} ${cuisineText}
 
-Suggest exactly 3 recipes they can make. Prioritize using the ingredients they already have.
+Suggest exactly 5 recipes they can make. Prioritize using the ingredients they already have.
 
 Return ONLY a valid JSON array with this exact structure, no markdown, no extra text:
 [
