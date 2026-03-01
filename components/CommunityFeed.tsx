@@ -40,6 +40,7 @@ export default function CommunityFeed({
   const [steps, setSteps] = useState<string[]>([]);
   const [macros, setMacros] = useState({ calories: "", protein: "", carbs: "", fat: "", fiber: "" });
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   useEffect(() => {
     fetchRecipes();
@@ -150,6 +151,14 @@ export default function CommunityFeed({
   async function submitRecipe() {
     if (!user || !form.name.trim()) return;
     setSubmitting(true);
+    setSubmitError("");
+
+    // Ensure profile exists (in case trigger didn't fire on signup)
+    await supabase.from("profiles").upsert(
+      { id: user.id, display_name: user.user_metadata?.full_name || user.email?.split("@")[0] || "User" },
+      { onConflict: "id" }
+    );
+
     const payload = {
       user_id: user.id,
       name: form.name.trim(),
@@ -168,7 +177,14 @@ export default function CommunityFeed({
           }
         : null,
     };
-    await supabase.from("community_recipes").insert(payload);
+
+    const { error } = await supabase.from("community_recipes").insert(payload);
+    if (error) {
+      setSubmitError(error.message);
+      setSubmitting(false);
+      return;
+    }
+
     setForm({ name: "", description: "", prep_time: "", servings: "" });
     setIngredients([]);
     setSteps([]);
@@ -331,6 +347,7 @@ export default function CommunityFeed({
                 </div>
               </div>
 
+              {submitError && <p className="text-red-500 text-sm">{submitError}</p>}
               <button
                 onClick={submitRecipe}
                 disabled={submitting || !form.name.trim()}
