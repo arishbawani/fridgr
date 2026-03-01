@@ -11,6 +11,8 @@ type Comment = {
   author_name: string | null;
 };
 
+const ADMIN_ID = "a1c54fac-7593-40cf-901b-b5756c3f68e8";
+
 export default function CommunityFeed({
   user,
   onRequireAuth,
@@ -141,7 +143,9 @@ export default function CommunityFeed({
 
   async function handleDelete(id: string) {
     if (!window.confirm("Delete this recipe?")) return;
-    await supabase.from("community_recipes").delete().eq("id", id).eq("user_id", user!.id);
+    const isAdmin = user?.id === ADMIN_ID;
+    const query = supabase.from("community_recipes").delete().eq("id", id);
+    await (isAdmin ? query : query.eq("user_id", user!.id));
     setDetail(null);
     fetchRecipes();
   }
@@ -398,10 +402,10 @@ export default function CommunityFeed({
               <h2 className="font-semibold text-slate-900 truncate pr-4">{detail.name}</h2>
               <div className="flex items-center gap-2 shrink-0">
                 {user?.id === detail.user_id && (
-                  <>
-                    <button onClick={() => startEdit(detail)} className="text-xs text-slate-400 hover:text-green-600 transition-colors font-medium">Edit</button>
-                    <button onClick={() => handleDelete(detail.id)} className="text-xs text-slate-400 hover:text-red-500 transition-colors font-medium">Delete</button>
-                  </>
+                  <button onClick={() => startEdit(detail)} className="text-xs text-slate-400 hover:text-green-600 transition-colors font-medium">Edit</button>
+                )}
+                {(user?.id === detail.user_id || user?.id === ADMIN_ID) && (
+                  <button onClick={() => handleDelete(detail.id)} className="text-xs text-slate-400 hover:text-red-500 transition-colors font-medium">Delete</button>
                 )}
                 <button onClick={() => setDetail(null)} className="text-slate-400 hover:text-slate-600 text-xl ml-1">×</button>
               </div>
