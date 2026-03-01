@@ -8,7 +8,7 @@ type Comment = {
   id: string;
   content: string;
   created_at: string;
-  profiles: { display_name: string | null } | null;
+  author_name: string | null;
 };
 
 export default function CommunityFeed({
@@ -48,12 +48,13 @@ export default function CommunityFeed({
 
   async function fetchRecipes() {
     setLoading(true);
-    const { data: recipesData } = await supabase
+    const { data: recipesData, error: fetchError } = await supabase
       .from("community_recipes")
-      .select("*, profiles(display_name)")
+      .select("*")
       .order("created_at", { ascending: false });
 
-    if (!recipesData) { setLoading(false); return; }
+    if (fetchError) { console.error("fetchRecipes error:", fetchError.message); }
+    if (!recipesData || recipesData.length === 0) { setRecipes([]); setLoading(false); return; }
 
     // Get likes and saves for current user
     const ids = recipesData.map((r) => r.id);
@@ -117,7 +118,7 @@ export default function CommunityFeed({
     setCommentsLoading(true);
     const { data } = await supabase
       .from("recipe_comments")
-      .select("*, profiles(display_name)")
+      .select("*")
       .eq("recipe_id", recipe.id)
       .order("created_at", { ascending: true });
     setComments(data ?? []);
@@ -128,10 +129,11 @@ export default function CommunityFeed({
     if (!user || !detail || !commentText.trim()) return;
     const content = commentText.trim();
     setCommentText("");
+    const authorName = user.user_metadata?.full_name || user.email?.split("@")[0] || "User";
     const { data } = await supabase
       .from("recipe_comments")
-      .insert({ user_id: user.id, recipe_id: detail.id, content })
-      .select("*, profiles(display_name)")
+      .insert({ user_id: user.id, recipe_id: detail.id, content, author_name: authorName })
+      .select("*")
       .single();
     if (data) setComments((prev) => [...prev, data]);
   }
@@ -153,14 +155,9 @@ export default function CommunityFeed({
     setSubmitting(true);
     setSubmitError("");
 
-    // Ensure profile exists (in case trigger didn't fire on signup)
-    await supabase.from("profiles").upsert(
-      { id: user.id, display_name: user.user_metadata?.full_name || user.email?.split("@")[0] || "User" },
-      { onConflict: "id" }
-    );
-
     const payload = {
       user_id: user.id,
+      author_name: user.user_metadata?.full_name || user.email?.split("@")[0] || "User",
       name: form.name.trim(),
       description: form.description.trim() || null,
       prep_time: form.prep_time.trim() || null,
@@ -374,7 +371,7 @@ export default function CommunityFeed({
               <div className="flex gap-4 text-xs text-slate-400">
                 {detail.prep_time && <span>⏱ {detail.prep_time}</span>}
                 {detail.servings && <span>🍽 {detail.servings} servings</span>}
-                <span>by {detail.profiles?.display_name ?? "Anonymous"}</span>
+                <span>by {detail.author_name ?? "Anonymous"}</span>
               </div>
 
               {detail.macros && (
@@ -423,7 +420,7 @@ export default function CommunityFeed({
                   <div className="space-y-3 mb-4">
                     {comments.map((c) => (
                       <div key={c.id}>
-                        <p className="text-xs text-slate-400 mb-0.5">{c.profiles?.display_name ?? "Anonymous"}</p>
+                        <p className="text-xs text-slate-400 mb-0.5">{c.author_name ?? "Anonymous"}</p>
                         <p className="text-sm text-slate-700">{c.content}</p>
                       </div>
                     ))}

@@ -12,7 +12,7 @@ export type CommunityRecipe = {
   ingredients: string[] | null;
   steps: string[] | null;
   created_at: string;
-  profiles: { display_name: string | null } | null;
+  author_name: string | null;
   like_count: number;
   comment_count: number;
   user_liked: boolean;
@@ -66,7 +66,7 @@ export default function CommunityRecipeCard({ recipe, onLike, onSave, onOpen, re
           )}
         </div>
         <p className="text-xs text-slate-400 mb-2">
-          by {recipe.profiles?.display_name ?? "Anonymous"} · {timeAgo}
+          by {recipe.author_name ?? "Anonymous"} · {timeAgo}
         </p>
         {recipe.description && (
           <p className="text-sm text-slate-500 mb-3 line-clamp-2">{recipe.description}</p>
