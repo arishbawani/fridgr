@@ -32,7 +32,13 @@ export default function Home() {
   const [minProtein, setMinProtein] = useState("");
   const [dietary, setDietary] = useState<string[]>([]);
   const [cuisine, setCuisine] = useState<string[]>([]);
-  const [view, setView] = useState<"recipes" | "community" | "day">("recipes");
+  const [view, setView] = useState<"recipes" | "community" | "day">(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("fridgr_view");
+      if (saved === "recipes" || saved === "community" || saved === "day") return saved;
+    }
+    return "recipes";
+  });
   const [loading, setLoading] = useState(false);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [error, setError] = useState("");
@@ -58,6 +64,10 @@ export default function Home() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem("fridgr_view", view);
+  }, [view]);
 
   async function submitCode() {
     if (!accessCode.trim()) return;
