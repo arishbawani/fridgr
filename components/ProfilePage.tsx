@@ -2,11 +2,19 @@
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase";
 import { User } from "@supabase/supabase-js";
-import CommunityRecipeCard, { CommunityRecipe } from "./CommunityRecipeCard";
+import CommunityRecipeCard, { CommunityRecipe, AvatarCircle } from "./CommunityRecipeCard";
+import UserProfileModal from "./UserProfileModal";
 import RecipeDetailModal from "./RecipeDetailModal";
 import ImageCropModal from "./ImageCropModal";
 
 type Profile = {
+  display_name: string | null;
+  handle: string | null;
+  avatar_url: string | null;
+};
+
+type FollowUser = {
+  id: string;
   display_name: string | null;
   handle: string | null;
   avatar_url: string | null;
@@ -32,11 +40,13 @@ async function enrichRecipes(
 ): Promise<CommunityRecipe[]> {
   if (recipesData.length === 0) return [];
   const ids = recipesData.map((r) => r.id);
-  const [likesRes, savesRes, likeCountsRes, commentCountsRes] = await Promise.all([
+  const authorIds = [...new Set(recipesData.map((r) => r.user_id))];
+  const [likesRes, savesRes, likeCountsRes, commentCountsRes, profilesRes] = await Promise.all([
     userId ? supabase.from("recipe_likes").select("recipe_id").eq("user_id", userId).in("recipe_id", ids) : Promise.resolve({ data: [] }),
     userId ? supabase.from("recipe_saves").select("recipe_id").eq("user_id", userId).in("recipe_id", ids) : Promise.resolve({ data: [] }),
     supabase.from("recipe_likes").select("recipe_id").in("recipe_id", ids),
     supabase.from("recipe_comments").select("recipe_id").in("recipe_id", ids),
+    supabase.from("profiles").select("id, display_name, handle, avatar_url").in("id", authorIds),
   ]);
   const userLiked = new Set((likesRes.data ?? []).map((l: { recipe_id: string }) => l.recipe_id));
   const userSaved = new Set((savesRes.data ?? []).map((s: { recipe_id: string }) => s.recipe_id));
@@ -46,13 +56,22 @@ async function enrichRecipes(
   const commentCounts = (commentCountsRes.data ?? []).reduce((acc: Record<string, number>, c: { recipe_id: string }) => {
     acc[c.recipe_id] = (acc[c.recipe_id] || 0) + 1; return acc;
   }, {});
-  return recipesData.map((r) => ({
-    ...r,
-    like_count: likeCounts[r.id] || 0,
-    comment_count: commentCounts[r.id] || 0,
-    user_liked: userLiked.has(r.id),
-    user_saved: userSaved.has(r.id),
-  }));
+  const profileMap = Object.fromEntries(
+    ((profilesRes.data ?? []) as Array<{ id: string; display_name: string | null; handle: string | null; avatar_url: string | null }>).map((p) => [p.id, p])
+  );
+  return recipesData.map((r) => {
+    const p = profileMap[r.user_id];
+    return {
+      ...r,
+      author_name: p?.display_name || r.author_name,
+      author_handle: p?.handle ?? null,
+      author_avatar_url: p?.avatar_url || r.author_avatar_url,
+      like_count: likeCounts[r.id] || 0,
+      comment_count: commentCounts[r.id] || 0,
+      user_liked: userLiked.has(r.id),
+      user_saved: userSaved.has(r.id),
+    };
+  });
 }
 
 export default function ProfilePage({ user, onRequireAuth, onSignOut, onAvatarChange }: Props) {
@@ -86,6 +105,10 @@ export default function ProfilePage({ user, onRequireAuth, onSignOut, onAvatarCh
   const [savingCollection, setSavingCollection] = useState(false);
   const [addingToCollection, setAddingToCollection] = useState<string | null>(null);
   const [collectionMemberships, setCollectionMemberships] = useState<Set<string>>(new Set());
+  const [followView, setFollowView] = useState<"followers" | "following" | null>(null);
+  const [followList, setFollowList] = useState<FollowUser[]>([]);
+  const [followListLoading, setFollowListLoading] = useState(false);
+  const [viewingUserId, setViewingUserId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -167,6 +190,29 @@ export default function ProfilePage({ user, onRequireAuth, onSignOut, onAvatarCh
 
     setCollections(cols.map((c) => ({ id: c.id, name: c.name, count: counts[c.id] || 0 })));
     setCollectionsLoading(false);
+  }
+
+  async function loadFollowList(type: "followers" | "following") {
+    if (!user) return;
+    setFollowView(type);
+    setFollowListLoading(true);
+    setFollowList([]);
+    if (type === "followers") {
+      const { data } = await supabase.from("follows").select("follower_id").eq("following_id", user.id);
+      const ids = (data ?? []).map((r: { follower_id: string }) => r.follower_id);
+      if (ids.length > 0) {
+        const { data: profiles } = await supabase.from("profiles").select("id, display_name, handle, avatar_url").in("id", ids);
+        setFollowList((profiles ?? []) as FollowUser[]);
+      }
+    } else {
+      const { data } = await supabase.from("follows").select("following_id").eq("follower_id", user.id);
+      const ids = (data ?? []).map((r: { following_id: string }) => r.following_id);
+      if (ids.length > 0) {
+        const { data: profiles } = await supabase.from("profiles").select("id, display_name, handle, avatar_url").in("id", ids);
+        setFollowList((profiles ?? []) as FollowUser[]);
+      }
+    }
+    setFollowListLoading(false);
   }
 
   async function createCollection() {
@@ -364,8 +410,12 @@ export default function ProfilePage({ user, onRequireAuth, onSignOut, onAvatarCh
                 <p className="font-semibold text-slate-900 truncate">{displayName}</p>
                 {profile.handle && <p className="text-sm text-slate-400">@{profile.handle}</p>}
                 <div className="flex gap-4 mt-2 text-xs text-slate-500">
-                  <span><strong className="text-slate-900">{followerCount}</strong> followers</span>
-                  <span><strong className="text-slate-900">{followingCount}</strong> following</span>
+                  <button onClick={() => loadFollowList("followers")} className="hover:text-slate-900 transition-colors">
+                    <strong className="text-slate-900">{followerCount}</strong> followers
+                  </button>
+                  <button onClick={() => loadFollowList("following")} className="hover:text-slate-900 transition-colors">
+                    <strong className="text-slate-900">{followingCount}</strong> following
+                  </button>
                 </div>
               </>
             )}
@@ -675,6 +725,63 @@ export default function ProfilePage({ user, onRequireAuth, onSignOut, onAvatarCh
           imageSrc={cropImageSrc}
           onApply={handleCropApply}
           onCancel={() => setCropImageSrc(null)}
+        />
+      )}
+
+      {/* Follow list modal */}
+      {followView && (
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 px-4 pb-4 sm:pb-0">
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h2 className="font-semibold text-slate-900">{followView === "followers" ? "Followers" : "Following"}</h2>
+              <button onClick={() => setFollowView(null)} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
+            </div>
+            <div className="p-4">
+              {followListLoading ? (
+                <div className="space-y-1">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="flex gap-3 animate-pulse p-3">
+                      <div className="w-9 h-9 rounded-full bg-slate-200 shrink-0" />
+                      <div className="flex-1 space-y-1.5 pt-1">
+                        <div className="h-3 bg-slate-200 rounded w-2/3" />
+                        <div className="h-3 bg-slate-100 rounded w-1/3" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : followList.length === 0 ? (
+                <p className="text-slate-400 text-sm text-center py-8">
+                  {followView === "followers" ? "No followers yet." : "Not following anyone yet."}
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  {followList.map((fu) => (
+                    <button
+                      key={fu.id}
+                      onClick={() => { setFollowView(null); setViewingUserId(fu.id); }}
+                      className="flex items-center gap-3 w-full p-3 hover:bg-slate-50 rounded-xl transition-colors text-left"
+                    >
+                      <AvatarCircle name={fu.display_name} url={fu.avatar_url} size={9} />
+                      <div>
+                        <p className="text-sm font-medium text-slate-900">{fu.display_name ?? "User"}</p>
+                        {fu.handle && <p className="text-xs text-slate-400">@{fu.handle}</p>}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View another user's profile */}
+      {viewingUserId && (
+        <UserProfileModal
+          userId={viewingUserId}
+          user={user}
+          onClose={() => setViewingUserId(null)}
+          onRequireAuth={onRequireAuth}
         />
       )}
     </div>
