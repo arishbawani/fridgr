@@ -116,14 +116,20 @@ export default function CommunityFeed({
     if (!recipesData || recipesData.length === 0) { setRecipes([]); setLoading(false); return; }
 
     const ids = recipesData.map((r) => r.id);
-    const [likesRes, savesRes, likeCountsRes, commentCountsRes, allRatingsRes, userRatingsRes] = await Promise.all([
+    const userIds = [...new Set(recipesData.map((r) => r.user_id))];
+    const [likesRes, savesRes, likeCountsRes, commentCountsRes, allRatingsRes, userRatingsRes, profilesRes] = await Promise.all([
       user ? supabase.from("recipe_likes").select("recipe_id").eq("user_id", user.id).in("recipe_id", ids) : Promise.resolve({ data: [] }),
       user ? supabase.from("recipe_saves").select("recipe_id").eq("user_id", user.id).in("recipe_id", ids) : Promise.resolve({ data: [] }),
       supabase.from("recipe_likes").select("recipe_id").in("recipe_id", ids),
       supabase.from("recipe_comments").select("recipe_id").in("recipe_id", ids),
       supabase.from("recipe_ratings").select("recipe_id, rating").in("recipe_id", ids),
       user ? supabase.from("recipe_ratings").select("recipe_id, rating").eq("user_id", user.id).in("recipe_id", ids) : Promise.resolve({ data: [] }),
+      supabase.from("profiles").select("id, display_name, handle, avatar_url").in("id", userIds),
     ]);
+
+    const profileMap = Object.fromEntries(
+      ((profilesRes as { data: Array<{ id: string; display_name: string | null; handle: string | null; avatar_url: string | null }> | null }).data ?? []).map((p) => [p.id, p])
+    );
 
     const userLiked = new Set((likesRes.data ?? []).map((l: { recipe_id: string }) => l.recipe_id));
     const userSaved = new Set((savesRes.data ?? []).map((s: { recipe_id: string }) => s.recipe_id));
@@ -145,8 +151,12 @@ export default function CommunityFeed({
 
     setRecipes(recipesData.map((r) => {
       const ratings = ratingsByRecipe[r.id] ?? [];
+      const profile = profileMap[r.user_id];
       return {
         ...r,
+        author_name: profile?.display_name || r.author_name,
+        author_handle: profile?.handle ?? null,
+        author_avatar_url: profile?.avatar_url || r.author_avatar_url,
         like_count: likeCounts[r.id] || 0,
         comment_count: commentCounts[r.id] || 0,
         user_liked: userLiked.has(r.id),

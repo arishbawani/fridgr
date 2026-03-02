@@ -13,6 +13,7 @@ export type CommunityRecipe = {
   steps: string[] | null;
   created_at: string;
   author_name: string | null;
+  author_handle: string | null;
   author_avatar_url: string | null;
   image_url: string | null;
   like_count: number;
@@ -101,7 +102,7 @@ export default function CommunityRecipeCard({ recipe, onLike, onSave, onOpen, re
         >
           <AvatarCircle name={recipe.author_name} url={recipe.author_avatar_url} size={6} />
           <p className="text-xs text-slate-400">
-            {recipe.author_name ?? "Anonymous"} · {timeAgo}
+            {recipe.author_name ?? "Anonymous"}{recipe.author_handle ? ` @${recipe.author_handle}` : ""} · {timeAgo}
           </p>
         </button>
 
