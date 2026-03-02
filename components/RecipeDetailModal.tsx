@@ -23,6 +23,14 @@ type LikerUser = {
   avatar_url: string | null;
 };
 
+type RaterUser = {
+  id: string;
+  display_name: string | null;
+  handle: string | null;
+  avatar_url: string | null;
+  rating: number;
+};
+
 type Props = {
   recipe: CommunityRecipe;
   user: User | null;
@@ -34,7 +42,7 @@ type Props = {
   onEdit?: (recipe: CommunityRecipe) => void;
   onDelete?: (id: string) => void;
   onAuthorClick?: (userId: string) => void;
-  onRate?: (id: string, avgRating: number | null, ratingCount: number) => void;
+  onRate?: (id: string, avgRating: number | null, ratingCount: number, userRating: number) => void;
 };
 
 export default function RecipeDetailModal({
@@ -69,6 +77,9 @@ export default function RecipeDetailModal({
   const [commentLikersCommentId, setCommentLikersCommentId] = useState<string | null>(null);
   const [commentLikers, setCommentLikers] = useState<LikerUser[]>([]);
   const [commentLikersLoading, setCommentLikersLoading] = useState(false);
+  const [ratersOpen, setRatersOpen] = useState(false);
+  const [raters, setRaters] = useState<RaterUser[]>([]);
+  const [ratersLoading, setRatersLoading] = useState(false);
 
   const isOwnRecipe = user?.id === recipe.user_id;
   const isAdmin = user?.id === ADMIN_ID;
@@ -247,7 +258,7 @@ export default function RecipeDetailModal({
         return;
       }
     }
-    onRate?.(recipe.id, newAvg, newCount);
+    onRate?.(recipe.id, newAvg, newCount, stars);
   }
 
   async function loadLikers() {
@@ -274,6 +285,23 @@ export default function RecipeDetailModal({
       setCommentLikers((profiles ?? []) as LikerUser[]);
     }
     setCommentLikersLoading(false);
+  }
+
+  async function loadRaters() {
+    setRatersLoading(true);
+    setRaters([]);
+    setRatersOpen(true);
+    const { data: ratingsData } = await supabase.from("recipe_ratings").select("user_id, rating").eq("recipe_id", recipe.id);
+    const rows = (ratingsData ?? []) as { user_id: string; rating: number }[];
+    if (rows.length > 0) {
+      const ids = rows.map((r) => r.user_id);
+      const { data: profiles } = await supabase.from("profiles").select("id, display_name, handle, avatar_url").in("id", ids);
+      const profileMap = Object.fromEntries(
+        ((profiles ?? []) as Array<{ id: string; display_name: string | null; handle: string | null; avatar_url: string | null }>).map((p) => [p.id, p])
+      );
+      setRaters(rows.map((r) => ({ id: r.user_id, rating: r.rating, ...profileMap[r.user_id] })));
+    }
+    setRatersLoading(false);
   }
 
   return (
@@ -374,9 +402,12 @@ export default function RecipeDetailModal({
               </button>
             ))}
             {ratingCount > 0 && (
-              <span className="text-xs text-slate-400 ml-1.5">
+              <button
+                onClick={loadRaters}
+                className="text-xs text-slate-400 ml-1.5 hover:text-slate-600 transition-colors"
+              >
                 {avgRating?.toFixed(1)} avg · {ratingCount} {ratingCount === 1 ? "rating" : "ratings"}
-              </span>
+              </button>
             )}
           </div>
 
@@ -524,6 +555,52 @@ export default function RecipeDetailModal({
                       <p className="text-sm font-medium text-slate-900">{u.display_name ?? "User"}</p>
                       {u.handle && <p className="text-xs text-slate-400">@{u.handle}</p>}
                     </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Raters overlay */}
+    {ratersOpen && (
+      <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-[60] px-4 pb-4 sm:pb-0">
+        <div className="bg-white rounded-2xl w-full max-w-sm max-h-[60vh] overflow-y-auto">
+          <div className="sticky top-0 bg-white px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+            <h3 className="font-semibold text-slate-900 text-sm">{ratingCount} {ratingCount === 1 ? "Rating" : "Ratings"}</h3>
+            <button onClick={() => setRatersOpen(false)} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
+          </div>
+          <div className="p-4">
+            {ratersLoading ? (
+              <div className="space-y-1">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex gap-3 animate-pulse p-3">
+                    <div className="w-9 h-9 rounded-full bg-slate-200 shrink-0" />
+                    <div className="flex-1 space-y-1.5 pt-1">
+                      <div className="h-3 bg-slate-200 rounded w-2/3" />
+                      <div className="h-3 bg-slate-100 rounded w-1/3" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : raters.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-8">No ratings yet.</p>
+            ) : (
+              <div className="space-y-1">
+                {raters.map((u) => (
+                  <button
+                    key={u.id}
+                    onClick={() => { setRatersOpen(false); onAuthorClick?.(u.id); }}
+                    className="flex items-center gap-3 w-full p-3 hover:bg-slate-50 rounded-xl transition-colors text-left"
+                  >
+                    <AvatarCircle name={u.display_name} url={u.avatar_url} size={9} />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-slate-900">{u.display_name ?? "User"}</p>
+                      {u.handle && <p className="text-xs text-slate-400">@{u.handle}</p>}
+                    </div>
+                    <span className="text-amber-400 text-sm shrink-0">{"★".repeat(u.rating)}{"☆".repeat(5 - u.rating)}</span>
                   </button>
                 ))}
               </div>

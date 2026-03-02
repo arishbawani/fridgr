@@ -208,9 +208,9 @@ export default function CommunityFeed({
     }
   }
 
-  function handleRecipeRated(id: string, avgRating: number | null, ratingCount: number) {
-    setRecipes((prev) => prev.map((r) => r.id === id ? { ...r, avg_rating: avgRating, rating_count: ratingCount } : r));
-    if (detail?.id === id) setDetail((d) => d ? { ...d, avg_rating: avgRating, rating_count: ratingCount } : d);
+  function handleRecipeRated(id: string, avgRating: number | null, ratingCount: number, userRating: number) {
+    setRecipes((prev) => prev.map((r) => r.id === id ? { ...r, avg_rating: avgRating, rating_count: ratingCount, user_rating: userRating } : r));
+    if (detail?.id === id) setDetail((d) => d ? { ...d, avg_rating: avgRating, rating_count: ratingCount, user_rating: userRating } : d);
   }
 
   async function handleDelete(id: string) {

@@ -334,12 +334,12 @@ export default function ProfilePage({ user, onRequireAuth, onSignOut, onAvatarCh
     setSaving(false);
   }
 
-  function handleRecipeRated(id: string, avgRating: number | null, ratingCount: number) {
-    const patch = (list: CommunityRecipe[]) => list.map((r) => r.id === id ? { ...r, avg_rating: avgRating, rating_count: ratingCount } : r);
+  function handleRecipeRated(id: string, avgRating: number | null, ratingCount: number, userRating: number) {
+    const patch = (list: CommunityRecipe[]) => list.map((r) => r.id === id ? { ...r, avg_rating: avgRating, rating_count: ratingCount, user_rating: userRating } : r);
     setPosts(patch);
     setSavedRecipes(patch);
     setCollectionRecipes(patch);
-    if (detail?.id === id) setDetail((d) => d ? { ...d, avg_rating: avgRating, rating_count: ratingCount } : d);
+    if (detail?.id === id) setDetail((d) => d ? { ...d, avg_rating: avgRating, rating_count: ratingCount, user_rating: userRating } : d);
   }
 
   async function handleLike(id: string, liked: boolean) {
