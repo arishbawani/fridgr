@@ -2,13 +2,17 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
 import { User } from "@supabase/supabase-js";
-import { AvatarCircle } from "./CommunityRecipeCard";
+import { AvatarCircle, CommunityRecipe } from "./CommunityRecipeCard";
+import RecipeDetailModal from "./RecipeDetailModal";
+import UserProfileModal from "./UserProfileModal";
 
 type Notification = {
   id: string;
+  actor_id: string | null;
   actor_name: string | null;
   actor_avatar_url: string | null;
   type: "like" | "comment" | "follow";
+  recipe_id: string | null;
   recipe_name: string | null;
   comment_preview: string | null;
   read: boolean;
@@ -34,6 +38,9 @@ export default function NotificationsPanel({ user, onClose, onMarkRead }: Props)
   const supabase = createClient();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
+  const [openRecipe, setOpenRecipe] = useState<CommunityRecipe | null>(null);
+  const [openUserId, setOpenUserId] = useState<string | null>(null);
+  const [recipeLoading, setRecipeLoading] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -46,7 +53,6 @@ export default function NotificationsPanel({ user, onClose, onMarkRead }: Props)
       setNotifications((data ?? []) as Notification[]);
       setLoading(false);
 
-      // Mark all as read
       supabase
         .from("notifications")
         .update({ read: true })
@@ -57,60 +63,150 @@ export default function NotificationsPanel({ user, onClose, onMarkRead }: Props)
     load();
   }, []);
 
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 px-4 pb-4 sm:pb-0">
-      <div className="bg-white rounded-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-          <h2 className="font-semibold text-slate-900">Notifications</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
-        </div>
+  async function handleOpenRecipe(recipeId: string) {
+    setRecipeLoading(true);
+    const { data: r } = await supabase.from("community_recipes").select("*").eq("id", recipeId).single();
+    if (!r) { setRecipeLoading(false); return; }
 
-        <div className="p-4">
-          {loading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="flex gap-3 animate-pulse">
-                  <div className="w-9 h-9 rounded-full bg-slate-200 shrink-0" />
-                  <div className="flex-1 space-y-1.5">
-                    <div className="h-3 bg-slate-200 rounded w-3/4" />
-                    <div className="h-3 bg-slate-100 rounded w-1/2" />
+    const [likeRes, saveRes, likeCountRes, commentCountRes, profileRes, ratingsRes, userRatingRes] = await Promise.all([
+      supabase.from("recipe_likes").select("recipe_id").eq("user_id", user.id).eq("recipe_id", recipeId),
+      supabase.from("recipe_saves").select("recipe_id").eq("user_id", user.id).eq("recipe_id", recipeId),
+      supabase.from("recipe_likes").select("recipe_id").eq("recipe_id", recipeId),
+      supabase.from("recipe_comments").select("recipe_id").eq("recipe_id", recipeId),
+      supabase.from("profiles").select("display_name, handle, avatar_url").eq("id", r.user_id).single(),
+      supabase.from("recipe_ratings").select("rating").eq("recipe_id", recipeId),
+      supabase.from("recipe_ratings").select("rating").eq("recipe_id", recipeId).eq("user_id", user.id).maybeSingle(),
+    ]);
+
+    const ratings = (ratingsRes.data ?? []).map((x: { rating: number }) => x.rating);
+    setOpenRecipe({
+      ...r,
+      author_name: profileRes.data?.display_name || r.author_name,
+      author_handle: profileRes.data?.handle ?? null,
+      author_avatar_url: profileRes.data?.avatar_url || r.author_avatar_url,
+      like_count: (likeCountRes.data ?? []).length,
+      comment_count: (commentCountRes.data ?? []).length,
+      user_liked: (likeRes.data ?? []).length > 0,
+      user_saved: (saveRes.data ?? []).length > 0,
+      avg_rating: ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null,
+      rating_count: ratings.length,
+      user_rating: userRatingRes.data?.rating ?? null,
+    });
+    setRecipeLoading(false);
+  }
+
+  async function handleLike(id: string, liked: boolean) {
+    if (liked) await supabase.from("recipe_likes").insert({ user_id: user.id, recipe_id: id });
+    else await supabase.from("recipe_likes").delete().eq("user_id", user.id).eq("recipe_id", id);
+  }
+
+  async function handleSave(id: string, saved: boolean) {
+    if (saved) await supabase.from("recipe_saves").insert({ user_id: user.id, recipe_id: id });
+    else await supabase.from("recipe_saves").delete().eq("user_id", user.id).eq("recipe_id", id);
+  }
+
+  function handleNotifClick(n: Notification) {
+    if (n.type === "follow") {
+      if (n.actor_id) setOpenUserId(n.actor_id);
+    } else {
+      if (n.recipe_id) handleOpenRecipe(n.recipe_id);
+    }
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 px-4 pb-4 sm:pb-0">
+        <div className="bg-white rounded-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto">
+          <div className="sticky top-0 bg-white px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+            <h2 className="font-semibold text-slate-900">Notifications</h2>
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
+          </div>
+
+          <div className="p-4">
+            {loading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex gap-3 animate-pulse">
+                    <div className="w-9 h-9 rounded-full bg-slate-200 shrink-0" />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="h-3 bg-slate-200 rounded w-3/4" />
+                      <div className="h-3 bg-slate-100 rounded w-1/2" />
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          ) : notifications.length === 0 ? (
-            <div className="py-12 text-center">
-              <p className="text-2xl mb-2">🔔</p>
-              <p className="text-slate-400 text-sm">No notifications yet.</p>
-              <p className="text-slate-300 text-xs mt-1">When someone likes, comments, or follows you, you&apos;ll see it here.</p>
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {notifications.map((n) => (
-                <div
-                  key={n.id}
-                  className={`flex gap-3 items-start p-3 rounded-xl transition-colors ${!n.read ? "bg-green-50" : ""}`}
-                >
-                  <AvatarCircle name={n.actor_name} url={n.actor_avatar_url} size={9} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-slate-700 leading-snug">
-                      <span className="font-medium">{n.actor_name ?? "Someone"}</span>
-                      {n.type === "like"
-                        ? <> liked your recipe <span className="font-medium">&ldquo;{n.recipe_name}&rdquo;</span></>
-                        : n.type === "follow"
-                        ? <> started following you</>
-                        : <> commented on <span className="font-medium">&ldquo;{n.recipe_name}&rdquo;</span>{n.comment_preview ? `: "${n.comment_preview}"` : ""}</>
-                      }
-                    </p>
-                    <p className="text-xs text-slate-400 mt-0.5">{timeAgo(n.created_at)}</p>
+                ))}
+              </div>
+            ) : recipeLoading ? (
+              <div className="flex flex-col items-center justify-center py-12 gap-3">
+                <div className="w-7 h-7 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
+                <p className="text-sm text-slate-400">Loading...</p>
+              </div>
+            ) : notifications.length === 0 ? (
+              <div className="py-12 text-center">
+                <p className="text-2xl mb-2">🔔</p>
+                <p className="text-slate-400 text-sm">No notifications yet.</p>
+                <p className="text-slate-300 text-xs mt-1">When someone likes, comments, or follows you, you&apos;ll see it here.</p>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {notifications.map((n) => (
+                  <div
+                    key={n.id}
+                    className={`flex gap-3 items-start p-3 rounded-xl ${!n.read ? "bg-green-50" : ""}`}
+                  >
+                    {/* Avatar → opens actor profile */}
+                    <button
+                      onClick={() => n.actor_id && setOpenUserId(n.actor_id)}
+                      className="shrink-0 hover:opacity-70 transition-opacity"
+                    >
+                      <AvatarCircle name={n.actor_name} url={n.actor_avatar_url} size={9} />
+                    </button>
+
+                    {/* Text → opens recipe or profile */}
+                    <button
+                      className="flex-1 min-w-0 text-left hover:opacity-80 transition-opacity"
+                      onClick={() => handleNotifClick(n)}
+                    >
+                      <p className="text-sm text-slate-700 leading-snug">
+                        <span className="font-medium">{n.actor_name ?? "Someone"}</span>
+                        {n.type === "like"
+                          ? <> liked your recipe <span className="font-medium">&ldquo;{n.recipe_name}&rdquo;</span></>
+                          : n.type === "follow"
+                          ? <> started following you</>
+                          : <> commented on <span className="font-medium">&ldquo;{n.recipe_name}&rdquo;</span>{n.comment_preview ? `: "${n.comment_preview}"` : ""}</>
+                        }
+                      </p>
+                      <p className="text-xs text-slate-400 mt-0.5">{timeAgo(n.created_at)}</p>
+                    </button>
+
+                    {!n.read && <div className="w-2 h-2 rounded-full bg-green-500 shrink-0 mt-1.5" />}
                   </div>
-                  {!n.read && <div className="w-2 h-2 rounded-full bg-green-500 shrink-0 mt-1.5" />}
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+
+      {openRecipe && (
+        <RecipeDetailModal
+          recipe={openRecipe}
+          user={user}
+          onClose={() => setOpenRecipe(null)}
+          onLike={handleLike}
+          onSave={handleSave}
+          onRequireAuth={() => {}}
+          onAuthorClick={(userId) => { setOpenRecipe(null); setOpenUserId(userId); }}
+        />
+      )}
+
+      {openUserId && (
+        <UserProfileModal
+          userId={openUserId}
+          user={user}
+          onClose={() => setOpenUserId(null)}
+          onRequireAuth={() => {}}
+        />
+      )}
+    </>
   );
 }
