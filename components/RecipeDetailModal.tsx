@@ -153,6 +153,14 @@ export default function RecipeDetailModal({
     } else {
       await supabase.from("follows").insert({ follower_id: user.id, following_id: recipe.user_id });
       setFollowing(true);
+      const { data: actorProfile } = await supabase.from("profiles").select("display_name, avatar_url").eq("id", user.id).single();
+      supabase.from("notifications").insert({
+        user_id: recipe.user_id,
+        actor_id: user.id,
+        actor_name: actorProfile?.display_name || user.email?.split("@")[0] || "Someone",
+        actor_avatar_url: actorProfile?.avatar_url ?? null,
+        type: "follow",
+      });
     }
     setFollowLoading(false);
   }

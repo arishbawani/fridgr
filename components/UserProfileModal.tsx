@@ -11,6 +11,13 @@ type Profile = {
   avatar_url: string | null;
 };
 
+type FollowUser = {
+  id: string;
+  display_name: string | null;
+  handle: string | null;
+  avatar_url: string | null;
+};
+
 type Props = {
   userId: string;
   user: User | null;
@@ -37,6 +44,10 @@ export default function UserProfileModal({ userId, user, onClose, onRequireAuth 
   const [recipes, setRecipes] = useState<CommunityRecipe[]>([]);
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<CommunityRecipe | null>(null);
+  const [followView, setFollowView] = useState<"followers" | "following" | null>(null);
+  const [followList, setFollowList] = useState<FollowUser[]>([]);
+  const [followListLoading, setFollowListLoading] = useState(false);
+  const [viewingNestedUserId, setViewingNestedUserId] = useState<string | null>(null);
 
   const isOwnProfile = user?.id === userId;
 
@@ -63,7 +74,6 @@ export default function UserProfileModal({ userId, user, onClose, onRequireAuth 
         setFollowing(!!followData);
       }
 
-      // Enrich recipes with like/save counts
       const rawRecipes = (recipesRes.data ?? []) as CommunityRecipe[];
       if (rawRecipes.length === 0) { setRecipes([]); setLoading(false); return; }
 
@@ -96,6 +106,28 @@ export default function UserProfileModal({ userId, user, onClose, onRequireAuth 
     load();
   }, [userId]);
 
+  async function loadFollowList(type: "followers" | "following") {
+    setFollowView(type);
+    setFollowListLoading(true);
+    setFollowList([]);
+    if (type === "followers") {
+      const { data } = await supabase.from("follows").select("follower_id").eq("following_id", userId);
+      const ids = (data ?? []).map((r: { follower_id: string }) => r.follower_id);
+      if (ids.length > 0) {
+        const { data: profiles } = await supabase.from("profiles").select("id, display_name, handle, avatar_url").in("id", ids);
+        setFollowList((profiles ?? []) as FollowUser[]);
+      }
+    } else {
+      const { data } = await supabase.from("follows").select("following_id").eq("follower_id", userId);
+      const ids = (data ?? []).map((r: { following_id: string }) => r.following_id);
+      if (ids.length > 0) {
+        const { data: profiles } = await supabase.from("profiles").select("id, display_name, handle, avatar_url").in("id", ids);
+        setFollowList((profiles ?? []) as FollowUser[]);
+      }
+    }
+    setFollowListLoading(false);
+  }
+
   async function handleFollow() {
     if (!user) { onRequireAuth(); return; }
     setFollowLoading(true);
@@ -107,6 +139,14 @@ export default function UserProfileModal({ userId, user, onClose, onRequireAuth 
       await supabase.from("follows").insert({ follower_id: user.id, following_id: userId });
       setFollowing(true);
       setFollowerCount((c) => c + 1);
+      const { data: actorProfile } = await supabase.from("profiles").select("display_name, avatar_url").eq("id", user.id).single();
+      supabase.from("notifications").insert({
+        user_id: userId,
+        actor_id: user.id,
+        actor_name: actorProfile?.display_name || user.email?.split("@")[0] || "Someone",
+        actor_avatar_url: actorProfile?.avatar_url ?? null,
+        type: "follow",
+      });
     }
     setFollowLoading(false);
   }
@@ -136,78 +176,147 @@ export default function UserProfileModal({ userId, user, onClose, onRequireAuth 
       <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="sticky top-0 bg-white px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-          <h2 className="font-semibold text-slate-900 truncate pr-4">{displayName}</h2>
+          {followView ? (
+            <button
+              onClick={() => setFollowView(null)}
+              className="flex items-center gap-1.5 font-semibold text-slate-900 hover:text-green-600 transition-colors"
+            >
+              <span className="text-base">←</span>
+              <span>{followView === "followers" ? "Followers" : "Following"}</span>
+            </button>
+          ) : (
+            <h2 className="font-semibold text-slate-900 truncate pr-4">{displayName}</h2>
+          )}
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl shrink-0">×</button>
         </div>
 
-        <div className="p-5">
-          {/* Profile info */}
-          <div className="flex items-start gap-4 mb-5">
-            <AvatarCircle name={profile?.display_name ?? null} url={profile?.avatar_url ?? null} size={16} />
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-slate-900">{displayName}</p>
-              {profile?.handle && <p className="text-sm text-slate-400">@{profile.handle}</p>}
-              <div className="flex gap-4 mt-2 text-xs text-slate-500">
-                <span><strong className="text-slate-900">{followerCount}</strong> followers</span>
-                <span><strong className="text-slate-900">{followingCount}</strong> following</span>
-              </div>
-            </div>
-            {!isOwnProfile && (
-              <button
-                onClick={handleFollow}
-                disabled={followLoading}
-                className={`text-sm font-medium px-4 py-2 rounded-xl border transition-colors shrink-0 ${
-                  following
-                    ? "border-slate-300 text-slate-500 hover:border-red-300 hover:text-red-400"
-                    : "bg-green-600 text-white border-green-600 hover:bg-green-700"
-                }`}
-              >
-                {following ? "Following" : "Follow"}
-              </button>
-            )}
-          </div>
-
-          {/* Their recipes */}
-          <div className="border-t border-slate-100 pt-4">
-            <p className="text-xs font-medium text-slate-500 mb-3">
-              {recipes.length} {recipes.length === 1 ? "recipe" : "recipes"}
-            </p>
-            {loading ? (
-              <div className="space-y-3">
-                {[1, 2].map((i) => (
-                  <div key={i} className="bg-slate-50 rounded-xl p-4 animate-pulse">
-                    <div className="h-4 bg-slate-200 rounded w-2/3 mb-2" />
-                    <div className="h-3 bg-slate-100 rounded w-1/3" />
+        {followView ? (
+          /* Follow list view */
+          <div className="p-4">
+            {followListLoading ? (
+              <div className="space-y-1">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex gap-3 animate-pulse p-3">
+                    <div className="w-9 h-9 rounded-full bg-slate-200 shrink-0" />
+                    <div className="flex-1 space-y-1.5 pt-1">
+                      <div className="h-3 bg-slate-200 rounded w-2/3" />
+                      <div className="h-3 bg-slate-100 rounded w-1/3" />
+                    </div>
                   </div>
                 ))}
               </div>
-            ) : recipes.length === 0 ? (
-              <p className="text-sm text-slate-400 text-center py-8">No recipes shared yet.</p>
+            ) : followList.length === 0 ? (
+              <p className="text-slate-400 text-sm text-center py-8">
+                {followView === "followers" ? "No followers yet." : "Not following anyone yet."}
+              </p>
             ) : (
-              <div className="space-y-3">
-                {recipes.map((r) => (
+              <div className="space-y-1">
+                {followList.map((fu) => (
                   <button
-                    key={r.id}
-                    onClick={() => setDetail(r)}
-                    className="w-full text-left bg-slate-50 hover:bg-slate-100 rounded-xl p-4 transition-colors"
+                    key={fu.id}
+                    onClick={() => setViewingNestedUserId(fu.id)}
+                    className="flex items-center gap-3 w-full p-3 hover:bg-slate-50 rounded-xl transition-colors text-left"
                   >
-                    {r.image_url && (
-                      <img src={r.image_url} alt={r.name} className="w-full h-32 object-cover rounded-lg mb-2" />
-                    )}
-                    <p className="font-medium text-slate-900 text-sm">{r.name}</p>
-                    {r.description && <p className="text-xs text-slate-400 mt-0.5 line-clamp-1">{r.description}</p>}
-                    <div className="flex items-center gap-3 mt-2 text-xs text-slate-400">
-                      <span>♥ {r.like_count}</span>
-                      <span>💬 {r.comment_count}</span>
-                      <span className="ml-auto">{timeAgo(r.created_at)}</span>
+                    <AvatarCircle name={fu.display_name} url={fu.avatar_url} size={9} />
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">{fu.display_name ?? "User"}</p>
+                      {fu.handle && <p className="text-xs text-slate-400">@{fu.handle}</p>}
                     </div>
                   </button>
                 ))}
               </div>
             )}
           </div>
-        </div>
+        ) : (
+          /* Profile view */
+          <div className="p-5">
+            {/* Profile info */}
+            <div className="flex items-start gap-4 mb-5">
+              <AvatarCircle name={profile?.display_name ?? null} url={profile?.avatar_url ?? null} size={16} />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-slate-900">{displayName}</p>
+                {profile?.handle && <p className="text-sm text-slate-400">@{profile.handle}</p>}
+                <div className="flex gap-4 mt-2 text-xs text-slate-500">
+                  <button
+                    onClick={() => loadFollowList("followers")}
+                    className="hover:text-slate-900 transition-colors"
+                  >
+                    <strong className="text-slate-900">{followerCount}</strong> followers
+                  </button>
+                  <button
+                    onClick={() => loadFollowList("following")}
+                    className="hover:text-slate-900 transition-colors"
+                  >
+                    <strong className="text-slate-900">{followingCount}</strong> following
+                  </button>
+                </div>
+              </div>
+              {!isOwnProfile && (
+                <button
+                  onClick={handleFollow}
+                  disabled={followLoading}
+                  className={`text-sm font-medium px-4 py-2 rounded-xl border transition-colors shrink-0 ${
+                    following
+                      ? "border-slate-300 text-slate-500 hover:border-red-300 hover:text-red-400"
+                      : "bg-green-600 text-white border-green-600 hover:bg-green-700"
+                  }`}
+                >
+                  {following ? "Following" : "Follow"}
+                </button>
+              )}
+            </div>
+
+            {/* Their recipes */}
+            <div className="border-t border-slate-100 pt-4">
+              <p className="text-xs font-medium text-slate-500 mb-3">
+                {recipes.length} {recipes.length === 1 ? "recipe" : "recipes"}
+              </p>
+              {loading ? (
+                <div className="space-y-3">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="bg-slate-50 rounded-xl p-4 animate-pulse">
+                      <div className="h-4 bg-slate-200 rounded w-2/3 mb-2" />
+                      <div className="h-3 bg-slate-100 rounded w-1/3" />
+                    </div>
+                  ))}
+                </div>
+              ) : recipes.length === 0 ? (
+                <p className="text-sm text-slate-400 text-center py-8">No recipes shared yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {recipes.map((r) => (
+                    <button
+                      key={r.id}
+                      onClick={() => setDetail(r)}
+                      className="w-full text-left bg-slate-50 hover:bg-slate-100 rounded-xl p-4 transition-colors"
+                    >
+                      {r.image_url && (
+                        <img src={r.image_url} alt={r.name} className="w-full h-32 object-cover rounded-lg mb-2" />
+                      )}
+                      <p className="font-medium text-slate-900 text-sm">{r.name}</p>
+                      {r.description && <p className="text-xs text-slate-400 mt-0.5 line-clamp-1">{r.description}</p>}
+                      <div className="flex items-center gap-3 mt-2 text-xs text-slate-400">
+                        <span>♥ {r.like_count}</span>
+                        <span>💬 {r.comment_count}</span>
+                        <span className="ml-auto">{timeAgo(r.created_at)}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
+
+      {viewingNestedUserId && (
+        <UserProfileModal
+          userId={viewingNestedUserId}
+          user={user}
+          onClose={() => setViewingNestedUserId(null)}
+          onRequireAuth={onRequireAuth}
+        />
+      )}
 
       {detail && (
         <RecipeDetailModal

@@ -8,7 +8,7 @@ type Notification = {
   id: string;
   actor_name: string | null;
   actor_avatar_url: string | null;
-  type: "like" | "comment";
+  type: "like" | "comment" | "follow";
   recipe_name: string | null;
   comment_preview: string | null;
   read: boolean;
@@ -82,7 +82,7 @@ export default function NotificationsPanel({ user, onClose, onMarkRead }: Props)
             <div className="py-12 text-center">
               <p className="text-2xl mb-2">🔔</p>
               <p className="text-slate-400 text-sm">No notifications yet.</p>
-              <p className="text-slate-300 text-xs mt-1">When someone likes or comments on your recipe, you&apos;ll see it here.</p>
+              <p className="text-slate-300 text-xs mt-1">When someone likes, comments, or follows you, you&apos;ll see it here.</p>
             </div>
           ) : (
             <div className="space-y-1">
@@ -97,6 +97,8 @@ export default function NotificationsPanel({ user, onClose, onMarkRead }: Props)
                       <span className="font-medium">{n.actor_name ?? "Someone"}</span>
                       {n.type === "like"
                         ? <> liked your recipe <span className="font-medium">&ldquo;{n.recipe_name}&rdquo;</span></>
+                        : n.type === "follow"
+                        ? <> started following you</>
                         : <> commented on <span className="font-medium">&ldquo;{n.recipe_name}&rdquo;</span>{n.comment_preview ? `: "${n.comment_preview}"` : ""}</>
                       }
                     </p>
