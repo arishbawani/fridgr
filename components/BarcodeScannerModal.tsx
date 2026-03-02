@@ -18,6 +18,9 @@ type FoodProduct = {
   carbs: number;
   fat: number;
   fiber: number;
+  sugar: number;
+  sodium: number;
+  saturatedFat: number;
 };
 
 type Props = {
@@ -116,6 +119,9 @@ export default function BarcodeScannerModal({ onLog, onClose }: Props) {
         carbs: +((n.carbohydrates_100g ?? 0) * f).toFixed(1),
         fat: +((n.fat_100g ?? 0) * f).toFixed(1),
         fiber: +((n.fiber_100g ?? 0) * f).toFixed(1),
+        sugar: +((n.sugars_100g ?? 0) * f).toFixed(1),
+        sodium: Math.round((n.sodium_100g ?? 0) * f * 1000), // OFF stores sodium in g, convert to mg
+        saturatedFat: +((n["saturated-fat_100g"] ?? 0) * f).toFixed(1),
       });
       setPhase("result");
     } catch {
@@ -141,6 +147,9 @@ export default function BarcodeScannerModal({ onLog, onClose }: Props) {
       carbs: +((product.carbs * mult).toFixed(1)),
       fat: +((product.fat * mult).toFixed(1)),
       fiber: +((product.fiber * mult).toFixed(1)),
+      sugar: +((product.sugar * mult).toFixed(1)),
+      sodium: Math.round(product.sodium * mult),
+      saturatedFat: +((product.saturatedFat * mult).toFixed(1)),
     });
     setLogged(true);
     setTimeout(onClose, 1200);
@@ -163,6 +172,9 @@ export default function BarcodeScannerModal({ onLog, onClose }: Props) {
         { label: "carbs", value: `${product.carbs}g`, color: "bg-blue-50 text-blue-700" },
         { label: "fat", value: `${product.fat}g`, color: "bg-purple-50 text-purple-700" },
         { label: "fiber", value: `${product.fiber}g`, color: "bg-yellow-50 text-yellow-700" },
+        { label: "sugar", value: `${product.sugar}g`, color: "bg-pink-50 text-pink-700" },
+        { label: "sodium", value: `${product.sodium}mg`, color: "bg-red-50 text-red-700" },
+        { label: "sat. fat", value: `${product.saturatedFat}g`, color: "bg-rose-50 text-rose-700" },
       ]
     : [];
 
@@ -202,7 +214,7 @@ export default function BarcodeScannerModal({ onLog, onClose }: Props) {
             <p className="font-semibold text-slate-900 mb-0.5 leading-tight">{product.name}</p>
             <p className="text-xs text-slate-400 mb-4">Per serving · {product.servingSize}</p>
 
-            <div className="grid grid-cols-5 gap-2 mb-4">
+            <div className="grid grid-cols-4 gap-2 mb-4">
               {macroChips.map(({ label, value, color }) => (
                 <div key={label} className={`${color} rounded-xl p-2 text-center`}>
                   <div className="font-semibold text-sm leading-none">{value}</div>

@@ -11,6 +11,9 @@ export type MacroEntry = {
   carbs: number;
   fat: number;
   fiber: number;
+  sugar?: number;
+  sodium?: number;
+  saturatedFat?: number;
 };
 
 type DailyLog = {
@@ -24,6 +27,9 @@ type DailyGoals = {
   carbs: number;
   fat: number;
   fiber: number;
+  sugar: number;
+  sodium: number;
+  saturatedFat: number;
 };
 
 const DEFAULT_GOALS: DailyGoals = {
@@ -32,6 +38,9 @@ const DEFAULT_GOALS: DailyGoals = {
   carbs: 250,
   fat: 65,
   fiber: 28,
+  sugar: 50,       // WHO daily limit (g)
+  sodium: 2300,    // FDA daily limit (mg)
+  saturatedFat: 20, // ~10% of 2000 kcal diet (g)
 };
 
 const LOG_KEY = "fridgr_daily_log";
@@ -169,8 +178,11 @@ export default function DayTracker({ user }: { user: User | null }) {
       carbs: acc.carbs + (e.carbs || 0),
       fat: acc.fat + (e.fat || 0),
       fiber: acc.fiber + (e.fiber || 0),
+      sugar: acc.sugar + (e.sugar || 0),
+      sodium: acc.sodium + (e.sodium || 0),
+      saturatedFat: acc.saturatedFat + (e.saturatedFat || 0),
     }),
-    { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 }
+    { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, saturatedFat: 0 }
   );
 
   function removeEntry(index: number) {
@@ -191,6 +203,9 @@ export default function DayTracker({ user }: { user: User | null }) {
       carbs: Number(manualEntry.carbs) || 0,
       fat: Number(manualEntry.fat) || 0,
       fiber: Number(manualEntry.fiber) || 0,
+      sugar: Number(manualEntry.sugar) || 0,
+      sodium: Number(manualEntry.sodium) || 0,
+      saturatedFat: Number(manualEntry.saturatedFat) || 0,
     };
     persistEntries([...entries, entry]);
     setManualEntry({ name: "" });
@@ -203,6 +218,9 @@ export default function DayTracker({ user }: { user: User | null }) {
     { key: "carbs", label: "Carbs", unit: "g", color: "text-blue-700", bar: "bg-blue-400" },
     { key: "fat", label: "Fat", unit: "g", color: "text-purple-700", bar: "bg-purple-400" },
     { key: "fiber", label: "Fiber", unit: "g", color: "text-yellow-700", bar: "bg-yellow-400" },
+    { key: "sugar", label: "Sugar", unit: "g", color: "text-pink-700", bar: "bg-pink-400" },
+    { key: "sodium", label: "Sodium", unit: "mg", color: "text-red-700", bar: "bg-red-400" },
+    { key: "saturatedFat", label: "Sat. Fat", unit: "g", color: "text-rose-700", bar: "bg-rose-400" },
   ];
 
   return (
@@ -350,6 +368,9 @@ export default function DayTracker({ user }: { user: User | null }) {
                   <p className="text-sm font-medium text-slate-800 truncate">{entry.name}</p>
                   <p className="text-xs text-slate-400 mt-0.5">
                     {entry.calories} cal · {entry.protein}g protein · {entry.carbs}g carbs · {entry.fat}g fat · {entry.fiber}g fiber
+                    {!!entry.sugar && ` · ${entry.sugar}g sugar`}
+                    {!!entry.sodium && ` · ${entry.sodium}mg sodium`}
+                    {!!entry.saturatedFat && ` · ${entry.saturatedFat}g sat. fat`}
                   </p>
                 </div>
                 <button
@@ -395,7 +416,7 @@ export default function DayTracker({ user }: { user: User | null }) {
               onChange={(e) => setManualEntry({ ...manualEntry, name: e.target.value })}
               className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500"
             />
-            <div className="grid grid-cols-5 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               {macros.map(({ key, label }) => (
                 <div key={key}>
                   <label className="text-xs text-slate-400 block mb-1">{label}</label>
