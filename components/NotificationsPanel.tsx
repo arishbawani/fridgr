@@ -96,8 +96,25 @@ export default function NotificationsPanel({ user, onClose, onMarkRead }: Props)
   }
 
   async function handleLike(id: string, liked: boolean) {
-    if (liked) await supabase.from("recipe_likes").insert({ user_id: user.id, recipe_id: id });
-    else await supabase.from("recipe_likes").delete().eq("user_id", user.id).eq("recipe_id", id);
+    if (liked) {
+      await supabase.from("recipe_likes").insert({ user_id: user.id, recipe_id: id });
+      if (openRecipe && openRecipe.user_id !== user.id) {
+        const { data: actorProfile } = await supabase.from("profiles").select("display_name, avatar_url").eq("id", user.id).single();
+        const actorName = actorProfile?.display_name || user.email?.split("@")[0] || "Someone";
+        const { error } = await supabase.from("notifications").insert({
+          user_id: openRecipe.user_id,
+          actor_id: user.id,
+          actor_name: actorName,
+          actor_avatar_url: actorProfile?.avatar_url ?? null,
+          type: "like",
+          recipe_id: id,
+          recipe_name: openRecipe.name,
+        });
+        if (error) console.error("Like notification error:", error.message);
+      }
+    } else {
+      await supabase.from("recipe_likes").delete().eq("user_id", user.id).eq("recipe_id", id);
+    }
   }
 
   async function handleSave(id: string, saved: boolean) {

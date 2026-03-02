@@ -55,6 +55,7 @@ export default function CommunityFeed({
   const [showCreate, setShowCreate] = useState(false);
   const [detail, setDetail] = useState<CommunityRecipe | null>(null);
   const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null);
+  const [userDisplayName, setUserDisplayName] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
 
@@ -74,8 +75,8 @@ export default function CommunityFeed({
   useEffect(() => {
     fetchRecipes();
     if (user) {
-      supabase.from("profiles").select("avatar_url").eq("id", user.id).single()
-        .then(({ data }) => setUserAvatarUrl(data?.avatar_url ?? null));
+      supabase.from("profiles").select("avatar_url, display_name").eq("id", user.id).single()
+        .then(({ data }) => { setUserAvatarUrl(data?.avatar_url ?? null); setUserDisplayName(data?.display_name ?? null); });
     } else {
       setUserAvatarUrl(null);
     }
@@ -181,8 +182,8 @@ export default function CommunityFeed({
       await supabase.from("recipe_likes").insert({ user_id: user.id, recipe_id: id });
       const recipe = recipes.find((r) => r.id === id);
       if (recipe && recipe.user_id !== user.id) {
-        const actorName = user.user_metadata?.full_name || user.email?.split("@")[0] || "Someone";
-        supabase.from("notifications").insert({
+        const actorName = userDisplayName || user.email?.split("@")[0] || "Someone";
+        const { error } = await supabase.from("notifications").insert({
           user_id: recipe.user_id,
           actor_id: user.id,
           actor_name: actorName,
@@ -191,6 +192,7 @@ export default function CommunityFeed({
           recipe_id: id,
           recipe_name: recipe.name,
         });
+        if (error) console.error("Like notification error:", error.message);
       }
     } else {
       await supabase.from("recipe_likes").delete().eq("user_id", user.id).eq("recipe_id", id);

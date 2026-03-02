@@ -78,11 +78,13 @@ export default function UserProfileModal({ userId, user, onClose, onRequireAuth 
       if (rawRecipes.length === 0) { setRecipes([]); setLoading(false); return; }
 
       const ids = rawRecipes.map((r) => r.id);
-      const [likesRes, savesRes, likeCountsRes, commentCountsRes] = await Promise.all([
+      const [likesRes, savesRes, likeCountsRes, commentCountsRes, ratingsRes, userRatingsRes] = await Promise.all([
         user ? supabase.from("recipe_likes").select("recipe_id").eq("user_id", user.id).in("recipe_id", ids) : Promise.resolve({ data: [] }),
         user ? supabase.from("recipe_saves").select("recipe_id").eq("user_id", user.id).in("recipe_id", ids) : Promise.resolve({ data: [] }),
         supabase.from("recipe_likes").select("recipe_id").in("recipe_id", ids),
         supabase.from("recipe_comments").select("recipe_id").in("recipe_id", ids),
+        supabase.from("recipe_ratings").select("recipe_id, rating").in("recipe_id", ids),
+        user ? supabase.from("recipe_ratings").select("recipe_id, rating").eq("user_id", user.id).in("recipe_id", ids) : Promise.resolve({ data: [] }),
       ]);
 
       const userLiked = new Set((likesRes.data ?? []).map((l: { recipe_id: string }) => l.recipe_id));
@@ -93,14 +95,28 @@ export default function UserProfileModal({ userId, user, onClose, onRequireAuth 
       const commentCounts = (commentCountsRes.data ?? []).reduce((acc: Record<string, number>, c: { recipe_id: string }) => {
         acc[c.recipe_id] = (acc[c.recipe_id] || 0) + 1; return acc;
       }, {});
+      const ratingsByRecipe = (ratingsRes.data ?? []).reduce((acc: Record<string, number[]>, r: { recipe_id: string; rating: number }) => {
+        if (!acc[r.recipe_id]) acc[r.recipe_id] = [];
+        acc[r.recipe_id].push(r.rating);
+        return acc;
+      }, {});
+      const userRatingMap = Object.fromEntries(
+        ((userRatingsRes.data ?? []) as Array<{ recipe_id: string; rating: number }>).map((r) => [r.recipe_id, r.rating])
+      );
 
-      setRecipes(rawRecipes.map((r) => ({
-        ...r,
-        like_count: likeCounts[r.id] || 0,
-        comment_count: commentCounts[r.id] || 0,
-        user_liked: userLiked.has(r.id),
-        user_saved: userSaved.has(r.id),
-      })));
+      setRecipes(rawRecipes.map((r) => {
+        const ratings = ratingsByRecipe[r.id] ?? [];
+        return {
+          ...r,
+          like_count: likeCounts[r.id] || 0,
+          comment_count: commentCounts[r.id] || 0,
+          user_liked: userLiked.has(r.id),
+          user_saved: userSaved.has(r.id),
+          avg_rating: ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null,
+          rating_count: ratings.length,
+          user_rating: userRatingMap[r.id] ?? null,
+        };
+      }));
       setLoading(false);
     }
     load();
@@ -162,6 +178,21 @@ export default function UserProfileModal({ userId, user, onClose, onRequireAuth 
     if (!user) return;
     if (liked) {
       await supabase.from("recipe_likes").insert({ user_id: user.id, recipe_id: id });
+      const recipe = [...recipes, ...(detail ? [detail] : [])].find((r) => r.id === id);
+      if (recipe && recipe.user_id !== user.id) {
+        const { data: actorProfile } = await supabase.from("profiles").select("display_name, avatar_url").eq("id", user.id).single();
+        const actorName = actorProfile?.display_name || user.email?.split("@")[0] || "Someone";
+        const { error } = await supabase.from("notifications").insert({
+          user_id: recipe.user_id,
+          actor_id: user.id,
+          actor_name: actorName,
+          actor_avatar_url: actorProfile?.avatar_url ?? null,
+          type: "like",
+          recipe_id: id,
+          recipe_name: recipe.name,
+        });
+        if (error) console.error("Like notification error:", error.message);
+      }
     } else {
       await supabase.from("recipe_likes").delete().eq("user_id", user.id).eq("recipe_id", id);
     }

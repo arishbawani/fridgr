@@ -41,12 +41,14 @@ async function enrichRecipes(
   if (recipesData.length === 0) return [];
   const ids = recipesData.map((r) => r.id);
   const authorIds = [...new Set(recipesData.map((r) => r.user_id))];
-  const [likesRes, savesRes, likeCountsRes, commentCountsRes, profilesRes] = await Promise.all([
+  const [likesRes, savesRes, likeCountsRes, commentCountsRes, profilesRes, ratingsRes, userRatingsRes] = await Promise.all([
     userId ? supabase.from("recipe_likes").select("recipe_id").eq("user_id", userId).in("recipe_id", ids) : Promise.resolve({ data: [] }),
     userId ? supabase.from("recipe_saves").select("recipe_id").eq("user_id", userId).in("recipe_id", ids) : Promise.resolve({ data: [] }),
     supabase.from("recipe_likes").select("recipe_id").in("recipe_id", ids),
     supabase.from("recipe_comments").select("recipe_id").in("recipe_id", ids),
     supabase.from("profiles").select("id, display_name, handle, avatar_url").in("id", authorIds),
+    supabase.from("recipe_ratings").select("recipe_id, rating").in("recipe_id", ids),
+    userId ? supabase.from("recipe_ratings").select("recipe_id, rating").eq("user_id", userId).in("recipe_id", ids) : Promise.resolve({ data: [] }),
   ]);
   const userLiked = new Set((likesRes.data ?? []).map((l: { recipe_id: string }) => l.recipe_id));
   const userSaved = new Set((savesRes.data ?? []).map((s: { recipe_id: string }) => s.recipe_id));
@@ -59,8 +61,17 @@ async function enrichRecipes(
   const profileMap = Object.fromEntries(
     ((profilesRes.data ?? []) as Array<{ id: string; display_name: string | null; handle: string | null; avatar_url: string | null }>).map((p) => [p.id, p])
   );
+  const ratingsByRecipe = (ratingsRes.data ?? []).reduce((acc: Record<string, number[]>, r: { recipe_id: string; rating: number }) => {
+    if (!acc[r.recipe_id]) acc[r.recipe_id] = [];
+    acc[r.recipe_id].push(r.rating);
+    return acc;
+  }, {});
+  const userRatingMap = Object.fromEntries(
+    ((userRatingsRes.data ?? []) as Array<{ recipe_id: string; rating: number }>).map((r) => [r.recipe_id, r.rating])
+  );
   return recipesData.map((r) => {
     const p = profileMap[r.user_id];
+    const ratings = ratingsByRecipe[r.id] ?? [];
     return {
       ...r,
       author_name: p?.display_name || r.author_name,
@@ -70,6 +81,9 @@ async function enrichRecipes(
       comment_count: commentCounts[r.id] || 0,
       user_liked: userLiked.has(r.id),
       user_saved: userSaved.has(r.id),
+      avg_rating: ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null,
+      rating_count: ratings.length,
+      user_rating: userRatingMap[r.id] ?? null,
     };
   });
 }
@@ -324,6 +338,20 @@ export default function ProfilePage({ user, onRequireAuth, onSignOut, onAvatarCh
     if (!user) return;
     if (liked) {
       await supabase.from("recipe_likes").insert({ user_id: user.id, recipe_id: id });
+      const recipe = [...posts, ...saved, ...collectionRecipes].find((r) => r.id === id);
+      if (recipe && recipe.user_id !== user.id) {
+        const actorName = profile.display_name || user.email?.split("@")[0] || "Someone";
+        const { error } = await supabase.from("notifications").insert({
+          user_id: recipe.user_id,
+          actor_id: user.id,
+          actor_name: actorName,
+          actor_avatar_url: profile.avatar_url,
+          type: "like",
+          recipe_id: id,
+          recipe_name: recipe.name,
+        });
+        if (error) console.error("Like notification error:", error.message);
+      }
     } else {
       await supabase.from("recipe_likes").delete().eq("user_id", user.id).eq("recipe_id", id);
     }
