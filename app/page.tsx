@@ -1,5 +1,5 @@
 "use client";
-import { useState, KeyboardEvent, useEffect } from "react";
+import { useState, KeyboardEvent, useEffect, useRef } from "react";
 import RecipeCard from "@/components/RecipeCard";
 import type { Recipe as RecipeType } from "@/components/RecipeCard";
 import DayTracker, { logMeal } from "@/components/DayTracker";
@@ -54,6 +54,10 @@ export default function Home() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
   const [shareRecipe, setShareRecipe] = useState<RecipeType | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scannedItems, setScannedItems] = useState<string[]>([]);
+  const [scanError, setScanError] = useState("");
+  const scanInputRef = useRef<HTMLInputElement>(null);
 
   const supabase = createClient();
 
@@ -150,6 +154,55 @@ export default function Home() {
     if (e.key === "Enter") {
       e.preventDefault();
       addIngredient();
+    }
+  }
+
+  async function handleScanSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setScanError("");
+    setScanning(true);
+    setScannedItems([]);
+
+    // Compress image to max 800px before sending
+    const compressed = await new Promise<string>((resolve) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const maxW = 800;
+        const scale = Math.min(1, maxW / img.width);
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.8));
+      };
+      img.src = url;
+    });
+
+    try {
+      const res = await fetch("/api/scan-fridge", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-access-code": savedCode ?? "",
+        },
+        body: JSON.stringify({ image: compressed }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setScanError(data.error || "Scan failed. Try again.");
+      } else if (data.ingredients?.length > 0) {
+        setScannedItems(data.ingredients);
+      } else {
+        setScanError("No food items detected. Try a clearer photo.");
+      }
+    } catch {
+      setScanError("Scan failed. Check your connection and try again.");
+    } finally {
+      setScanning(false);
     }
   }
 
@@ -335,7 +388,68 @@ export default function Home() {
             >
               Add
             </button>
+            <button
+              onClick={() => scanInputRef.current?.click()}
+              disabled={scanning}
+              title="Scan your fridge"
+              className="bg-slate-100 text-slate-600 px-3 py-2.5 rounded-xl text-lg hover:bg-slate-200 transition-colors disabled:opacity-50"
+            >
+              {scanning ? (
+                <span className="inline-block w-5 h-5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+              ) : "📷"}
+            </button>
+            <input
+              ref={scanInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={handleScanSelect}
+            />
           </div>
+
+          {/* Scan error */}
+          {scanError && (
+            <p className="text-red-500 text-xs mt-2 px-1">{scanError}</p>
+          )}
+
+          {/* Scan review panel */}
+          {scannedItems.length > 0 && (
+            <div className="mt-3 p-3 bg-green-50 rounded-xl border border-green-100">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-green-700">Detected — tap × to remove any wrong items</p>
+                <button
+                  onClick={() => setScannedItems([])}
+                  className="text-green-400 hover:text-green-600 text-sm leading-none"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {scannedItems.map((item) => (
+                  <span key={item} className="flex items-center gap-1 bg-white text-slate-700 text-xs px-2.5 py-1.5 rounded-full border border-slate-200">
+                    {item}
+                    <button
+                      onClick={() => setScannedItems((prev) => prev.filter((i) => i !== item))}
+                      className="text-slate-300 hover:text-red-400 leading-none"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <button
+                onClick={() => {
+                  const toAdd = scannedItems.filter((item) => !ingredients.includes(item));
+                  setIngredients((prev) => [...prev, ...toAdd]);
+                  setScannedItems([]);
+                }}
+                className="w-full bg-green-600 text-white py-2 rounded-xl text-sm font-medium hover:bg-green-700 transition-colors"
+              >
+                Add {scannedItems.filter((item) => !ingredients.includes(item)).length} items to fridge
+              </button>
+            </div>
+          )}
 
           {ingredients.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-3">
