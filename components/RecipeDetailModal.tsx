@@ -218,19 +218,36 @@ export default function RecipeDetailModal({
     setUserRating(stars);
     setAvgRating(newAvg);
     setRatingCount(newCount);
-    const { error } = await supabase.from("recipe_ratings").upsert(
-      { user_id: user.id, recipe_id: recipe.id, rating: stars },
-      { onConflict: "user_id,recipe_id" }
-    );
-    if (error) {
-      console.error("Rating error:", error.message);
-      // Revert
-      setUserRating(prev);
-      setAvgRating(recipe.avg_rating ?? null);
-      setRatingCount(recipe.rating_count ?? 0);
-    } else {
-      onRate?.(recipe.id, newAvg, newCount);
+
+    // Try insert first; if unique constraint fires, fall back to update
+    const { error: insertError } = await supabase
+      .from("recipe_ratings")
+      .insert({ user_id: user.id, recipe_id: recipe.id, rating: stars });
+
+    if (insertError) {
+      if (insertError.code === "23505") {
+        // Already rated — update existing row
+        const { error: updateError } = await supabase
+          .from("recipe_ratings")
+          .update({ rating: stars })
+          .eq("user_id", user.id)
+          .eq("recipe_id", recipe.id);
+        if (updateError) {
+          console.error("Rating update error:", updateError.message);
+          setUserRating(prev);
+          setAvgRating(recipe.avg_rating ?? null);
+          setRatingCount(recipe.rating_count ?? 0);
+          return;
+        }
+      } else {
+        console.error("Rating insert error:", insertError.code, insertError.message);
+        setUserRating(prev);
+        setAvgRating(recipe.avg_rating ?? null);
+        setRatingCount(recipe.rating_count ?? 0);
+        return;
+      }
     }
+    onRate?.(recipe.id, newAvg, newCount);
   }
 
   async function loadLikers() {
