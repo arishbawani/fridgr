@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { createClient } from "@/lib/supabase";
 
 export type CommunityRecipe = {
   id: string;
@@ -49,10 +50,21 @@ function AvatarCircle({ name, url, size = 6 }: { name: string | null; url: strin
 
 export { AvatarCircle };
 
+type LikerUser = {
+  id: string;
+  display_name: string | null;
+  handle: string | null;
+  avatar_url: string | null;
+};
+
 export default function CommunityRecipeCard({ recipe, onLike, onSave, onOpen, requireAuth, onAuthorClick }: Props) {
+  const supabase = createClient();
   const [liked, setLiked] = useState(recipe.user_liked);
   const [likeCount, setLikeCount] = useState(recipe.like_count);
   const [saved, setSaved] = useState(recipe.user_saved);
+  const [likersOpen, setLikersOpen] = useState(false);
+  const [likers, setLikers] = useState<LikerUser[]>([]);
+  const [likersLoading, setLikersLoading] = useState(false);
 
   function handleLike() {
     if (!requireAuth()) return;
@@ -60,6 +72,19 @@ export default function CommunityRecipeCard({ recipe, onLike, onSave, onOpen, re
     setLiked(next);
     setLikeCount((c) => c + (next ? 1 : -1));
     onLike(recipe.id, next);
+  }
+
+  async function loadLikers() {
+    setLikersLoading(true);
+    setLikers([]);
+    setLikersOpen(true);
+    const { data } = await supabase.from("recipe_likes").select("user_id").eq("recipe_id", recipe.id);
+    const ids = (data ?? []).map((r: { user_id: string }) => r.user_id);
+    if (ids.length > 0) {
+      const { data: profiles } = await supabase.from("profiles").select("id, display_name, handle, avatar_url").in("id", ids);
+      setLikers((profiles ?? []) as LikerUser[]);
+    }
+    setLikersLoading(false);
   }
 
   function handleSave() {
@@ -79,6 +104,7 @@ export default function CommunityRecipeCard({ recipe, onLike, onSave, onOpen, re
   })();
 
   return (
+    <>
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       <button className="w-full text-left p-5" onClick={() => onOpen(recipe)}>
         <div className="flex items-start justify-between gap-3 mb-2">
@@ -142,15 +168,20 @@ export default function CommunityRecipeCard({ recipe, onLike, onSave, onOpen, re
       </button>
 
       <div className="flex items-center gap-4 px-5 py-3 border-t border-slate-100">
-        <button
-          onClick={handleLike}
-          className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${
-            liked ? "text-red-500" : "text-slate-400 hover:text-red-400"
-          }`}
-        >
-          <span>{liked ? "♥" : "♡"}</span>
-          <span>{likeCount}</span>
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={handleLike}
+            className={`text-sm font-medium transition-colors ${liked ? "text-red-500" : "text-slate-400 hover:text-red-400"}`}
+          >
+            {liked ? "♥" : "♡"}
+          </button>
+          <button
+            onClick={likeCount > 0 ? loadLikers : undefined}
+            className={`text-sm font-medium transition-colors ${likeCount > 0 ? "text-slate-500 hover:text-slate-700" : "text-slate-400 cursor-default"}`}
+          >
+            {likeCount}
+          </button>
+        </div>
 
         <button
           onClick={handleSave}
@@ -171,5 +202,50 @@ export default function CommunityRecipeCard({ recipe, onLike, onSave, onOpen, re
         </button>
       </div>
     </div>
+
+    {likersOpen && (
+      <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 px-4 pb-4 sm:pb-0">
+        <div className="bg-white rounded-2xl w-full max-w-sm max-h-[60vh] overflow-y-auto">
+          <div className="sticky top-0 bg-white px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+            <h3 className="font-semibold text-slate-900 text-sm">{likeCount} {likeCount === 1 ? "Like" : "Likes"}</h3>
+            <button onClick={() => setLikersOpen(false)} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
+          </div>
+          <div className="p-4">
+            {likersLoading ? (
+              <div className="space-y-1">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex gap-3 animate-pulse p-3">
+                    <div className="w-9 h-9 rounded-full bg-slate-200 shrink-0" />
+                    <div className="flex-1 space-y-1.5 pt-1">
+                      <div className="h-3 bg-slate-200 rounded w-2/3" />
+                      <div className="h-3 bg-slate-100 rounded w-1/3" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : likers.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-8">No likes yet.</p>
+            ) : (
+              <div className="space-y-1">
+                {likers.map((u) => (
+                  <button
+                    key={u.id}
+                    onClick={() => { setLikersOpen(false); onAuthorClick?.(u.id); }}
+                    className="flex items-center gap-3 w-full p-3 hover:bg-slate-50 rounded-xl transition-colors text-left"
+                  >
+                    <AvatarCircle name={u.display_name} url={u.avatar_url} size={9} />
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">{u.display_name ?? "User"}</p>
+                      {u.handle && <p className="text-xs text-slate-400">@{u.handle}</p>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

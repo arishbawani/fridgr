@@ -208,6 +208,11 @@ export default function CommunityFeed({
     }
   }
 
+  function handleRecipeRated(id: string, avgRating: number | null, ratingCount: number) {
+    setRecipes((prev) => prev.map((r) => r.id === id ? { ...r, avg_rating: avgRating, rating_count: ratingCount } : r));
+    if (detail?.id === id) setDetail((d) => d ? { ...d, avg_rating: avgRating, rating_count: ratingCount } : d);
+  }
+
   async function handleDelete(id: string) {
     if (!window.confirm("Delete this recipe?")) return;
     const isAdmin = user?.id === ADMIN_ID;
@@ -531,6 +536,7 @@ export default function CommunityFeed({
           onEdit={startEdit}
           onDelete={handleDelete}
           onAuthorClick={setViewingUserId}
+          onRate={handleRecipeRated}
         />
       )}
 

@@ -34,6 +34,7 @@ type Props = {
   onEdit?: (recipe: CommunityRecipe) => void;
   onDelete?: (id: string) => void;
   onAuthorClick?: (userId: string) => void;
+  onRate?: (id: string, avgRating: number | null, ratingCount: number) => void;
 };
 
 export default function RecipeDetailModal({
@@ -47,6 +48,7 @@ export default function RecipeDetailModal({
   onEdit,
   onDelete,
   onAuthorClick,
+  onRate,
 }: Props) {
   const supabase = createClient();
   const [comments, setComments] = useState<Comment[]>([]);
@@ -203,19 +205,32 @@ export default function RecipeDetailModal({
   async function handleRate(stars: number) {
     if (!user) { onRequireAuth(); return; }
     const prev = userRating;
-    setUserRating(stars);
-    // Optimistic avg update
+    let newAvg: number | null;
+    let newCount: number;
     if (prev === null) {
-      const newCount = ratingCount + 1;
-      setAvgRating(((avgRating ?? 0) * ratingCount + stars) / newCount);
-      setRatingCount(newCount);
+      newCount = ratingCount + 1;
+      newAvg = ((avgRating ?? 0) * ratingCount + stars) / newCount;
     } else {
-      setAvgRating(((avgRating ?? 0) * ratingCount - prev + stars) / ratingCount);
+      newCount = ratingCount;
+      newAvg = ((avgRating ?? 0) * ratingCount - prev + stars) / ratingCount;
     }
-    await supabase.from("recipe_ratings").upsert(
+    // Optimistic update
+    setUserRating(stars);
+    setAvgRating(newAvg);
+    setRatingCount(newCount);
+    const { error } = await supabase.from("recipe_ratings").upsert(
       { user_id: user.id, recipe_id: recipe.id, rating: stars },
       { onConflict: "user_id,recipe_id" }
     );
+    if (error) {
+      console.error("Rating error:", error.message);
+      // Revert
+      setUserRating(prev);
+      setAvgRating(recipe.avg_rating ?? null);
+      setRatingCount(recipe.rating_count ?? 0);
+    } else {
+      onRate?.(recipe.id, newAvg, newCount);
+    }
   }
 
   async function loadLikers() {

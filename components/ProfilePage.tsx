@@ -334,6 +334,14 @@ export default function ProfilePage({ user, onRequireAuth, onSignOut, onAvatarCh
     setSaving(false);
   }
 
+  function handleRecipeRated(id: string, avgRating: number | null, ratingCount: number) {
+    const patch = (list: CommunityRecipe[]) => list.map((r) => r.id === id ? { ...r, avg_rating: avgRating, rating_count: ratingCount } : r);
+    setPosts(patch);
+    setSavedRecipes(patch);
+    setCollectionRecipes(patch);
+    if (detail?.id === id) setDetail((d) => d ? { ...d, avg_rating: avgRating, rating_count: ratingCount } : d);
+  }
+
   async function handleLike(id: string, liked: boolean) {
     if (!user) return;
     if (liked) {
@@ -654,6 +662,7 @@ export default function ProfilePage({ user, onRequireAuth, onSignOut, onAvatarCh
           onLike={handleLike}
           onSave={handleSave}
           onRequireAuth={onRequireAuth}
+          onRate={handleRecipeRated}
         />
       )}
 
