@@ -34,13 +34,13 @@ type DailyGoals = {
 
 const DEFAULT_GOALS: DailyGoals = {
   calories: 2000,
-  protein: 150,
-  carbs: 250,
-  fat: 65,
-  fiber: 28,
-  sugar: 50,       // WHO daily limit (g)
-  sodium: 2300,    // FDA daily limit (mg)
-  saturatedFat: 20, // ~10% of 2000 kcal diet (g)
+  protein: 50,      // FDA Daily Value
+  carbs: 275,       // FDA Daily Value (55% of 2000 kcal)
+  fat: 78,          // FDA Daily Value (35% of 2000 kcal)
+  fiber: 28,        // FDA Daily Value
+  sugar: 50,        // FDA Daily Value / WHO 10% limit
+  sodium: 2300,     // FDA / AHA upper limit (mg)
+  saturatedFat: 20, // FDA Daily Value (10% of 2000 kcal)
 };
 
 const LOG_KEY = "fridgr_daily_log";
