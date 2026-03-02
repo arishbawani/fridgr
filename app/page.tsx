@@ -27,6 +27,7 @@ const CUISINE_OPTIONS = [
   "Thai", "Mediterranean", "American", "Korean", "Middle Eastern", "French", "Greek",
 ];
 const STORAGE_KEY = "fridgr_access_code";
+const PANTRY_KEY = "fridgr_pantry";
 
 export default function Home() {
   const [accessCode, setAccessCode] = useState("");
@@ -58,10 +59,19 @@ export default function Home() {
   const [scannedItems, setScannedItems] = useState<string[]>([]);
   const [scanError, setScanError] = useState("");
   const scanInputRef = useRef<HTMLInputElement>(null);
+  const [pantryItems, setPantryItems] = useState<string[]>([]);
+  const [pantryInput, setPantryInput] = useState("");
+  const [editingPantry, setEditingPantry] = useState(false);
+  const [showPantry, setShowPantry] = useState(false);
 
   const supabase = createClient();
 
   useEffect(() => {
+    const savedPantry = localStorage.getItem(PANTRY_KEY);
+    if (savedPantry) {
+      try { setPantryItems(JSON.parse(savedPantry)); } catch { /* ignore */ }
+    }
+
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       // Validate stored code is still correct before accepting it
@@ -94,6 +104,24 @@ export default function Home() {
     if (!user) { setAvatarUrl(null); setUnreadCount(0); return; }
     supabase.from("profiles").select("avatar_url").eq("id", user.id).single()
       .then(({ data }) => setAvatarUrl(data?.avatar_url ?? null));
+
+    // Sync pantry with Supabase — cloud takes precedence; upload local if cloud is empty
+    supabase.from("user_pantry").select("items").eq("user_id", user.id).maybeSingle()
+      .then(({ data }) => {
+        if (data && data.items?.length > 0) {
+          setPantryItems(data.items);
+          localStorage.setItem(PANTRY_KEY, JSON.stringify(data.items));
+        } else {
+          const local = localStorage.getItem(PANTRY_KEY);
+          const localItems: string[] = local ? JSON.parse(local) : [];
+          if (localItems.length > 0) {
+            supabase.from("user_pantry").upsert(
+              { user_id: user.id, items: localItems, updated_at: new Date().toISOString() },
+              { onConflict: "user_id" }
+            );
+          }
+        }
+      });
 
     // Fetch initial unread count
     supabase.from("notifications").select("id", { count: "exact", head: true })
@@ -216,6 +244,28 @@ export default function Home() {
     setCuisine((prev) =>
       prev.includes(option) ? prev.filter((c) => c !== option) : [...prev, option]
     );
+  }
+
+  async function savePantry(items: string[]) {
+    setPantryItems(items);
+    localStorage.setItem(PANTRY_KEY, JSON.stringify(items));
+    if (user) {
+      await supabase.from("user_pantry").upsert(
+        { user_id: user.id, items, updated_at: new Date().toISOString() },
+        { onConflict: "user_id" }
+      );
+    }
+  }
+
+  function addPantryItem() {
+    const trimmed = pantryInput.trim().toLowerCase();
+    if (!trimmed || pantryItems.includes(trimmed)) { setPantryInput(""); return; }
+    savePantry([...pantryItems, trimmed]);
+    setPantryInput("");
+  }
+
+  function removePantryItem(item: string) {
+    savePantry(pantryItems.filter((p) => p !== item));
   }
 
   async function findRecipes() {
@@ -469,6 +519,100 @@ export default function Home() {
               ))}
             </div>
           )}
+
+          {/* My Pantry */}
+          <div className="mt-3 border-t border-slate-100 pt-3">
+            <button
+              onClick={() => setShowPantry(!showPantry)}
+              className="flex items-center justify-between w-full text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors"
+            >
+              <span>My Pantry <span className="font-normal text-slate-400">(staple ingredients)</span></span>
+              <span className="text-slate-400">{showPantry ? "↑" : "↓"}</span>
+            </button>
+
+            {showPantry && (
+              <div className="mt-2">
+                {pantryItems.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {pantryItems.map((item) => (
+                      <button
+                        key={item}
+                        onClick={() => {
+                          if (editingPantry) return;
+                          if (!ingredients.includes(item)) setIngredients((prev) => [...prev, item]);
+                        }}
+                        className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-full border transition-colors ${
+                          ingredients.includes(item)
+                            ? "bg-green-100 text-green-700 border-green-200"
+                            : "bg-slate-50 text-slate-600 border-slate-200 hover:border-green-400"
+                        }`}
+                      >
+                        {item}
+                        {editingPantry && (
+                          <span
+                            onClick={(e) => { e.stopPropagation(); removePantryItem(item); }}
+                            className="text-slate-400 hover:text-red-400 leading-none"
+                          >
+                            ×
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {pantryItems.length === 0 && !editingPantry && (
+                  <p className="text-xs text-slate-400 mb-2">No pantry items yet. Add your staples below.</p>
+                )}
+
+                {!editingPantry ? (
+                  <div className="flex items-center gap-3">
+                    {pantryItems.length > 0 && (
+                      <button
+                        onClick={() => {
+                          const toAdd = pantryItems.filter((i) => !ingredients.includes(i));
+                          setIngredients((prev) => [...prev, ...toAdd]);
+                        }}
+                        className="text-xs text-green-600 hover:text-green-700 font-medium transition-colors"
+                      >
+                        Add all to search
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setEditingPantry(true)}
+                      className="text-xs text-slate-400 hover:text-slate-600 transition-colors"
+                    >
+                      {pantryItems.length === 0 ? "Add items" : "Edit"}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2 mt-1">
+                    <input
+                      type="text"
+                      value={pantryInput}
+                      onChange={(e) => setPantryInput(e.target.value)}
+                      onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => e.key === "Enter" && addPantryItem()}
+                      placeholder="e.g. salt, olive oil, garlic"
+                      className="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-green-500"
+                      autoFocus
+                    />
+                    <button
+                      onClick={addPantryItem}
+                      className="text-xs bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition-colors"
+                    >
+                      Add
+                    </button>
+                    <button
+                      onClick={() => { setEditingPantry(false); setPantryInput(""); }}
+                      className="text-xs text-slate-400 hover:text-slate-600 transition-colors"
+                    >
+                      Done
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </section>
 
         {/* Macro Goals */}

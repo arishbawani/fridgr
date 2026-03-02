@@ -2,8 +2,9 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase";
 import { User } from "@supabase/supabase-js";
+import BarcodeScannerModal from "./BarcodeScannerModal";
 
-type MacroEntry = {
+export type MacroEntry = {
   name: string;
   calories: number;
   protein: number;
@@ -100,6 +101,7 @@ export default function DayTracker({ user }: { user: User | null }) {
   const [manualEntry, setManualEntry] = useState<Partial<MacroEntry>>({ name: "" });
   const [showManual, setShowManual] = useState(false);
   const [weekCalories, setWeekCalories] = useState<Array<{ date: string; calories: number }>>([]);
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -204,6 +206,7 @@ export default function DayTracker({ user }: { user: User | null }) {
   ];
 
   return (
+    <>
     <div className="space-y-4">
       {/* Daily Summary */}
       <section className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
@@ -361,6 +364,18 @@ export default function DayTracker({ user }: { user: User | null }) {
         )}
       </section>
 
+      {/* Scan Barcode */}
+      <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <button
+          onClick={() => setShowBarcodeScanner(true)}
+          className="w-full px-5 py-4 text-sm font-medium text-slate-600 flex items-center gap-3 hover:bg-slate-50 transition-colors"
+        >
+          <span className="text-xl">📷</span>
+          <span>Scan barcode to log food</span>
+          <span className="text-slate-400 ml-auto">→</span>
+        </button>
+      </section>
+
       {/* Add Manually */}
       <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <button
@@ -405,5 +420,13 @@ export default function DayTracker({ user }: { user: User | null }) {
         )}
       </section>
     </div>
+
+    {showBarcodeScanner && (
+      <BarcodeScannerModal
+        onLog={(entry) => persistEntries([...entries, entry])}
+        onClose={() => setShowBarcodeScanner(false)}
+      />
+    )}
+    </>
   );
 }
