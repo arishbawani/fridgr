@@ -101,9 +101,10 @@ export default function CommunityRecipeCard({ recipe, onLike, onSave, onOpen, re
           onClick={(e) => { e.stopPropagation(); onAuthorClick?.(recipe.user_id); }}
         >
           <AvatarCircle name={recipe.author_name} url={recipe.author_avatar_url} size={6} />
-          <p className="text-xs text-slate-400">
-            {recipe.author_name ?? "Anonymous"}{recipe.author_handle ? ` @${recipe.author_handle}` : ""} · {timeAgo}
-          </p>
+          <div className="text-xs leading-tight text-left">
+            <p className="text-slate-600">{recipe.author_name ?? "Anonymous"} · {timeAgo}</p>
+            {recipe.author_handle && <p className="text-slate-400">@{recipe.author_handle}</p>}
+          </div>
         </button>
 
         {recipe.description && (

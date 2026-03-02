@@ -221,9 +221,10 @@ export default function RecipeDetailModal({
               onClick={() => onAuthorClick?.(recipe.user_id)}
             >
               <AvatarCircle name={recipe.author_name} url={recipe.author_avatar_url} size={6} />
-              <span className="text-xs text-slate-500">
-                {recipe.author_name ?? "Anonymous"}{recipe.author_handle ? ` @${recipe.author_handle}` : ""}
-              </span>
+              <div className="text-xs leading-tight text-left">
+                <p className="text-slate-500">{recipe.author_name ?? "Anonymous"}</p>
+                {recipe.author_handle && <p className="text-slate-400">@{recipe.author_handle}</p>}
+              </div>
             </button>
             {recipe.prep_time && <span className="text-xs text-slate-400">⏱ {recipe.prep_time}</span>}
             {recipe.servings && <span className="text-xs text-slate-400">🍽 {recipe.servings} servings</span>}
