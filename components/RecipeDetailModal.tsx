@@ -50,6 +50,10 @@ export default function RecipeDetailModal({
   const [saved, setSaved] = useState(recipe.user_saved);
   const [following, setFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
+  const [userRating, setUserRating] = useState<number | null>(recipe.user_rating ?? null);
+  const [hoverRating, setHoverRating] = useState(0);
+  const [avgRating, setAvgRating] = useState<number | null>(recipe.avg_rating ?? null);
+  const [ratingCount, setRatingCount] = useState(recipe.rating_count ?? 0);
 
   const isOwnRecipe = user?.id === recipe.user_id;
   const isAdmin = user?.id === ADMIN_ID;
@@ -168,6 +172,24 @@ export default function RecipeDetailModal({
     }
   }
 
+  async function handleRate(stars: number) {
+    if (!user) { onRequireAuth(); return; }
+    const prev = userRating;
+    setUserRating(stars);
+    // Optimistic avg update
+    if (prev === null) {
+      const newCount = ratingCount + 1;
+      setAvgRating(((avgRating ?? 0) * ratingCount + stars) / newCount);
+      setRatingCount(newCount);
+    } else {
+      setAvgRating(((avgRating ?? 0) * ratingCount - prev + stars) / ratingCount);
+    }
+    await supabase.from("recipe_ratings").upsert(
+      { user_id: user.id, recipe_id: recipe.id, rating: stars },
+      { onConflict: "user_id,recipe_id" }
+    );
+  }
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 px-4 pb-4 sm:pb-0">
       <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
@@ -234,6 +256,31 @@ export default function RecipeDetailModal({
               <span>{saved ? "★" : "☆"}</span>
               <span>{saved ? "Saved" : "Save"}</span>
             </button>
+          </div>
+
+          {/* Star Rating */}
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-slate-400 mr-0.5">Rate:</span>
+            {[1, 2, 3, 4, 5].map((star) => (
+              <button
+                key={star}
+                onClick={() => handleRate(star)}
+                onMouseEnter={() => setHoverRating(star)}
+                onMouseLeave={() => setHoverRating(0)}
+                className={`text-xl leading-none transition-colors ${
+                  star <= (hoverRating || userRating || 0)
+                    ? "text-amber-400"
+                    : "text-slate-200 hover:text-amber-300"
+                }`}
+              >
+                ★
+              </button>
+            ))}
+            {ratingCount > 0 && (
+              <span className="text-xs text-slate-400 ml-1.5">
+                {avgRating?.toFixed(1)} avg · {ratingCount} {ratingCount === 1 ? "rating" : "ratings"}
+              </span>
+            )}
           </div>
 
           {/* Macros */}

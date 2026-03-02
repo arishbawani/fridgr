@@ -116,11 +116,13 @@ export default function CommunityFeed({
     if (!recipesData || recipesData.length === 0) { setRecipes([]); setLoading(false); return; }
 
     const ids = recipesData.map((r) => r.id);
-    const [likesRes, savesRes, likeCountsRes, commentCountsRes] = await Promise.all([
+    const [likesRes, savesRes, likeCountsRes, commentCountsRes, allRatingsRes, userRatingsRes] = await Promise.all([
       user ? supabase.from("recipe_likes").select("recipe_id").eq("user_id", user.id).in("recipe_id", ids) : Promise.resolve({ data: [] }),
       user ? supabase.from("recipe_saves").select("recipe_id").eq("user_id", user.id).in("recipe_id", ids) : Promise.resolve({ data: [] }),
       supabase.from("recipe_likes").select("recipe_id").in("recipe_id", ids),
       supabase.from("recipe_comments").select("recipe_id").in("recipe_id", ids),
+      supabase.from("recipe_ratings").select("recipe_id, rating").in("recipe_id", ids),
+      user ? supabase.from("recipe_ratings").select("recipe_id, rating").eq("user_id", user.id).in("recipe_id", ids) : Promise.resolve({ data: [] }),
     ]);
 
     const userLiked = new Set((likesRes.data ?? []).map((l: { recipe_id: string }) => l.recipe_id));
@@ -131,14 +133,29 @@ export default function CommunityFeed({
     const commentCounts = (commentCountsRes.data ?? []).reduce((acc: Record<string, number>, c: { recipe_id: string }) => {
       acc[c.recipe_id] = (acc[c.recipe_id] || 0) + 1; return acc;
     }, {});
+    const ratingsByRecipe: Record<string, number[]> = {};
+    for (const r of (allRatingsRes.data ?? []) as { recipe_id: string; rating: number }[]) {
+      if (!ratingsByRecipe[r.recipe_id]) ratingsByRecipe[r.recipe_id] = [];
+      ratingsByRecipe[r.recipe_id].push(r.rating);
+    }
+    const userRatingMap: Record<string, number> = {};
+    for (const r of (userRatingsRes.data ?? []) as { recipe_id: string; rating: number }[]) {
+      userRatingMap[r.recipe_id] = r.rating;
+    }
 
-    setRecipes(recipesData.map((r) => ({
-      ...r,
-      like_count: likeCounts[r.id] || 0,
-      comment_count: commentCounts[r.id] || 0,
-      user_liked: userLiked.has(r.id),
-      user_saved: userSaved.has(r.id),
-    })));
+    setRecipes(recipesData.map((r) => {
+      const ratings = ratingsByRecipe[r.id] ?? [];
+      return {
+        ...r,
+        like_count: likeCounts[r.id] || 0,
+        comment_count: commentCounts[r.id] || 0,
+        user_liked: userLiked.has(r.id),
+        user_saved: userSaved.has(r.id),
+        avg_rating: ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null,
+        rating_count: ratings.length,
+        user_rating: userRatingMap[r.id] ?? null,
+      };
+    }));
     setLoading(false);
   }
 

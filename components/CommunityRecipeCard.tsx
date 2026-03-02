@@ -19,6 +19,9 @@ export type CommunityRecipe = {
   comment_count: number;
   user_liked: boolean;
   user_saved: boolean;
+  avg_rating: number | null;
+  rating_count: number;
+  user_rating: number | null;
 };
 
 type Props = {
@@ -124,6 +127,14 @@ export default function CommunityRecipeCard({ recipe, onLike, onSave, onOpen, re
             {recipe.macros.calories && <span>{recipe.macros.calories} cal</span>}
             {recipe.macros.protein && <span>{recipe.macros.protein}g protein</span>}
             {recipe.macros.carbs && <span>{recipe.macros.carbs}g carbs</span>}
+          </div>
+        )}
+
+        {recipe.rating_count > 0 && (
+          <div className="flex items-center gap-1 mt-1.5">
+            <span className="text-amber-400 text-xs">{"★".repeat(Math.round(recipe.avg_rating ?? 0))}{"☆".repeat(5 - Math.round(recipe.avg_rating ?? 0))}</span>
+            <span className="text-xs font-medium text-slate-600">{recipe.avg_rating?.toFixed(1)}</span>
+            <span className="text-xs text-slate-400">({recipe.rating_count})</span>
           </div>
         )}
       </button>
