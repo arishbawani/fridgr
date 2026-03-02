@@ -153,14 +153,21 @@ export default function RecipeDetailModal({
     } else {
       await supabase.from("follows").insert({ follower_id: user.id, following_id: recipe.user_id });
       setFollowing(true);
-      const { data: actorProfile } = await supabase.from("profiles").select("display_name, avatar_url").eq("id", user.id).single();
-      supabase.from("notifications").insert({
-        user_id: recipe.user_id,
-        actor_id: user.id,
-        actor_name: actorProfile?.display_name || user.email?.split("@")[0] || "Someone",
-        actor_avatar_url: actorProfile?.avatar_url ?? null,
-        type: "follow",
-      });
+      // Rate limit: only notify once per 24h per actor→target pair
+      const notifKey = `fridgr_follow_notif_${user.id}_${recipe.user_id}`;
+      const lastNotified = localStorage.getItem(notifKey);
+      if (!lastNotified || Date.now() - parseInt(lastNotified) > 24 * 60 * 60 * 1000) {
+        const { data: actorProfile } = await supabase.from("profiles").select("display_name, avatar_url").eq("id", user.id).single();
+        const { error } = await supabase.from("notifications").insert({
+          user_id: recipe.user_id,
+          actor_id: user.id,
+          actor_name: actorProfile?.display_name || user.email?.split("@")[0] || "Someone",
+          actor_avatar_url: actorProfile?.avatar_url ?? null,
+          type: "follow",
+        });
+        if (!error) localStorage.setItem(notifKey, Date.now().toString());
+        else console.error("Follow notification error:", error.message);
+      }
     }
     setFollowLoading(false);
   }
